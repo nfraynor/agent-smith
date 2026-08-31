@@ -1,0 +1,30 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Editor and operating-system files
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+coverage/
+
+# Common dependency and build output
+node_modules/
+dist/
+build/
+target/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+

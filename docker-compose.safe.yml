@@ -1,0 +1,25 @@
+services:
+  remoteops:
+    build: .
+    image: ${REMOTEOPS_IMAGE:-remoteops-mcp:local}
+    restart: unless-stopped
+    environment:
+      REMOTEOPS_CONFIG: /config/remoteops.yaml
+      REMOTEOPS_TOKEN: ${REMOTEOPS_TOKEN:?set REMOTEOPS_TOKEN}
+      REMOTEOPS_GODMODE: "false"
+    ports:
+      - "${REMOTEOPS_BIND:-127.0.0.1}:${REMOTEOPS_PORT:-8080}:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${REMOTEOPS_CONFIG_FILE:-./remoteops.example.yaml}:/config/remoteops.yaml:ro
+      - ./managed:/managed
+      - remoteops-data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  remoteops-data:

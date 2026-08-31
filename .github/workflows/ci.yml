@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache: true
+      - run: gofmt -w . && git diff --exit-code
+      - run: go vet ./...
+      - run: go test -race -coverprofile=coverage.out ./...
+      - run: go build ./cmd/remoteops
+      - run: docker build -t remoteops-mcp:ci .
+      - run: docker compose -f docker-compose.safe.yml config
+        env:
+          REMOTEOPS_TOKEN: ci-placeholder-not-a-real-secret
+      - run: docker compose -f docker-compose.godmode.yml config
+        env:
+          REMOTEOPS_TOKEN: ci-placeholder-not-a-real-secret

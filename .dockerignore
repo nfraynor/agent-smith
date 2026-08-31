@@ -1,0 +1,8 @@
+.git
+.github
+.spec-extract
+RemoteOps MCP Build Specification.docx
+remoteops-spec.zip
+data
+coverage.out
+*.log

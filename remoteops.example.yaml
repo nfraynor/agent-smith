@@ -1,0 +1,42 @@
+server:
+  name: remoteops
+  listen: ":8080"
+
+auth:
+  mode: bearer
+  token_env: REMOTEOPS_TOKEN
+  actor: remote-client
+
+docker:
+  enabled: true
+  socket: unix:///var/run/docker.sock
+
+filesystem:
+  roots:
+    - name: managed
+      path: /managed
+      read_only: false
+
+compose:
+  projects: []
+  # - name: example
+  #   path: /managed/example
+  #   file: compose.yaml
+
+permissions:
+  default_role: viewer
+
+shell:
+  enabled: false
+
+changes:
+  retention_days: 30
+  max_records: 10000
+
+limits:
+  max_log_bytes: 1048576
+  max_file_read_bytes: 1048576
+  max_execution_seconds: 60
+  max_request_bytes: 1048576
+  requests_per_minute: 120
+  mutations_per_minute: 20
