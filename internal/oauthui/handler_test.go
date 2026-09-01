@@ -130,7 +130,7 @@ func newHandler(t *testing.T, backend *fakeBackend, mutate func(*Options)) *Hand
 func TestLoginPageSetsDefensiveHeadersAndHostCookie(t *testing.T) {
 	handler := newHandler(t, newFakeBackend(permissions.RoleAdmin), nil)
 	recorder := httptest.NewRecorder()
-	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "https://remote.test/login?transaction=abc_123", nil))
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "https://remote.test/oauth/login?transaction=abc_123", nil))
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d", recorder.Code)
 	}
@@ -143,7 +143,7 @@ func TestLoginPageSetsDefensiveHeadersAndHostCookie(t *testing.T) {
 		t.Error("missing restrictive CSP")
 	}
 	cookies := recorder.Result().Cookies()
-	if len(cookies) != 1 || cookies[0].Name != LoginCSRFCookie || !cookies[0].Secure || !cookies[0].HttpOnly || cookies[0].Domain != "" || cookies[0].Path != "/" {
+	if len(cookies) != 1 || cookies[0].Name != LoginCSRFCookie || !cookies[0].Secure || !cookies[0].HttpOnly || cookies[0].Domain != "" || cookies[0].Path != "/oauth" {
 		t.Fatalf("unexpected login CSRF cookie: %#v", cookies)
 	}
 	if !strings.Contains(recorder.Body.String(), `value="abc_123"`) {
@@ -155,7 +155,7 @@ func TestLoginRejectsCrossOriginBeforePasswordVerification(t *testing.T) {
 	backend := newFakeBackend(permissions.RoleAdmin)
 	handler := newHandler(t, backend, nil)
 	recorder := httptest.NewRecorder()
-	request := formRequest(http.MethodPost, "/login", url.Values{"csrf": {"token"}, "email": {"admin@example.com"}, "password": {backend.password}}, "https://evil.example")
+	request := formRequest(http.MethodPost, "/oauth/login", url.Values{"csrf": {"token"}, "email": {"admin@example.com"}, "password": {backend.password}}, "https://evil.example")
 	request.AddCookie(&http.Cookie{Name: LoginCSRFCookie, Value: "token"})
 	handler.ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusBadRequest || backend.authCalls != 0 {
@@ -167,7 +167,7 @@ func TestSuccessfulLoginRotatesSessionAndUsesInternalContinuation(t *testing.T) 
 	backend := newFakeBackend(permissions.RoleAdmin)
 	handler := newHandler(t, backend, nil)
 	recorder := httptest.NewRecorder()
-	request := formRequest(http.MethodPost, "/login", url.Values{"csrf": {"token"}, "email": {"ADMIN@EXAMPLE.COM"}, "password": {backend.password}, "transaction": {"tx-123"}}, "https://this.dev.privacyperfect.com")
+	request := formRequest(http.MethodPost, "/oauth/login", url.Values{"csrf": {"token"}, "email": {"ADMIN@EXAMPLE.COM"}, "password": {backend.password}, "transaction": {"tx-123"}}, "https://this.dev.privacyperfect.com")
 	request.AddCookie(&http.Cookie{Name: LoginCSRFCookie, Value: "token"})
 	request.AddCookie(&http.Cookie{Name: SessionCookieName, Value: "attacker-fixed"})
 	handler.ServeHTTP(recorder, request)
@@ -193,10 +193,10 @@ func TestLoginDoesNotAcceptRedirectAsTransaction(t *testing.T) {
 	backend := newFakeBackend(permissions.RoleAdmin)
 	handler := newHandler(t, backend, nil)
 	recorder := httptest.NewRecorder()
-	request := formRequest(http.MethodPost, "/login", url.Values{"csrf": {"token"}, "email": {backend.users[0].Email}, "password": {backend.password}, "transaction": {"https://evil.example/steal"}}, "https://this.dev.privacyperfect.com")
+	request := formRequest(http.MethodPost, "/oauth/login", url.Values{"csrf": {"token"}, "email": {backend.users[0].Email}, "password": {backend.password}, "transaction": {"https://evil.example/steal"}}, "https://this.dev.privacyperfect.com")
 	request.AddCookie(&http.Cookie{Name: LoginCSRFCookie, Value: "token"})
 	handler.ServeHTTP(recorder, request)
-	if recorder.Header().Get("Location") != "/admin/users" {
+	if recorder.Header().Get("Location") != "/oauth/admin/users" {
 		t.Fatalf("unsafe redirect location %q", recorder.Header().Get("Location"))
 	}
 }
@@ -207,14 +207,14 @@ func TestPasswordChangeRequiresStoredCSRFAndRotatesSession(t *testing.T) {
 	handler := newHandler(t, backend, nil)
 
 	bad := httptest.NewRecorder()
-	badRequest := authenticatedForm("/account/password", credentials, url.Values{"csrf": {"wrong"}, "current_password": {backend.password}, "new_password": {"new correct horse battery"}, "confirm_password": {"new correct horse battery"}})
+	badRequest := authenticatedForm("/oauth/account/password", credentials, url.Values{"csrf": {"wrong"}, "current_password": {backend.password}, "new_password": {"new correct horse battery"}, "confirm_password": {"new correct horse battery"}})
 	handler.ServeHTTP(bad, badRequest)
 	if bad.Code != http.StatusBadRequest || backend.passwordChanged {
 		t.Fatalf("bad CSRF status=%d changed=%v", bad.Code, backend.passwordChanged)
 	}
 
 	good := httptest.NewRecorder()
-	goodRequest := authenticatedForm("/account/password", credentials, url.Values{"csrf": {credentials.CSRFToken}, "current_password": {backend.password}, "new_password": {"new correct horse battery"}, "confirm_password": {"new correct horse battery"}})
+	goodRequest := authenticatedForm("/oauth/account/password", credentials, url.Values{"csrf": {credentials.CSRFToken}, "current_password": {backend.password}, "new_password": {"new correct horse battery"}, "confirm_password": {"new correct horse battery"}})
 	handler.ServeHTTP(good, goodRequest)
 	if good.Code != http.StatusSeeOther || !backend.passwordChanged || backend.revoked != credentials.Token {
 		t.Fatalf("status=%d changed=%v revoked=%q", good.Code, backend.passwordChanged, backend.revoked)
@@ -227,14 +227,14 @@ func TestAdminMutationRequiresAdminAndPasswordConfirmation(t *testing.T) {
 	handler := newHandler(t, backend, nil)
 
 	denied := httptest.NewRecorder()
-	deniedRequest := authenticatedForm("/admin/users/user-2/update", credentials, url.Values{"csrf": {credentials.CSRFToken}, "current_password": {"wrong"}, "role": {"operator"}, "enabled": {"on"}})
+	deniedRequest := authenticatedForm("/oauth/admin/users/user-2/update", credentials, url.Values{"csrf": {credentials.CSRFToken}, "current_password": {"wrong"}, "role": {"operator"}, "enabled": {"on"}})
 	handler.ServeHTTP(denied, deniedRequest)
 	if denied.Code != http.StatusForbidden || backend.updated != nil {
 		t.Fatalf("status=%d update=%#v", denied.Code, backend.updated)
 	}
 
 	allowed := httptest.NewRecorder()
-	allowedRequest := authenticatedForm("/admin/users/user-2/update", credentials, url.Values{"csrf": {credentials.CSRFToken}, "current_password": {backend.password}, "role": {"operator"}, "enabled": {"on"}})
+	allowedRequest := authenticatedForm("/oauth/admin/users/user-2/update", credentials, url.Values{"csrf": {credentials.CSRFToken}, "current_password": {backend.password}, "role": {"operator"}, "enabled": {"on"}})
 	handler.ServeHTTP(allowed, allowedRequest)
 	if allowed.Code != http.StatusSeeOther || backend.updated == nil || backend.updated.ID != "user-2" || backend.updated.Role != permissions.RoleOperator {
 		t.Fatalf("status=%d update=%#v", allowed.Code, backend.updated)
@@ -245,7 +245,7 @@ func TestViewerCannotReadAdminPage(t *testing.T) {
 	backend := newFakeBackend(permissions.RoleViewer)
 	credentials, _ := backend.CreateSession("user-1", time.Hour)
 	handler := newHandler(t, backend, nil)
-	request := httptest.NewRequest(http.MethodGet, "/admin/users", nil)
+	request := httptest.NewRequest(http.MethodGet, "/oauth/admin/users", nil)
 	request.AddCookie(&http.Cookie{Name: SessionCookieName, Value: credentials.Token})
 	request.AddCookie(&http.Cookie{Name: CSRFCookieName, Value: credentials.CSRFToken})
 	recorder := httptest.NewRecorder()
@@ -260,7 +260,7 @@ func TestAdminPageEscapesAccountData(t *testing.T) {
 	backend.users = append(backend.users, User{ID: "user-2", Email: `<script>alert(1)</script>@example.com`, Role: permissions.RoleViewer, Enabled: true})
 	credentials, _ := backend.CreateSession("user-1", time.Hour)
 	handler := newHandler(t, backend, nil)
-	request := httptest.NewRequest(http.MethodGet, "/admin/users", nil)
+	request := httptest.NewRequest(http.MethodGet, "/oauth/admin/users", nil)
 	request.AddCookie(&http.Cookie{Name: SessionCookieName, Value: credentials.Token})
 	request.AddCookie(&http.Cookie{Name: CSRFCookieName, Value: credentials.CSRFToken})
 	recorder := httptest.NewRecorder()
@@ -274,7 +274,7 @@ func TestFormBodyIsBounded(t *testing.T) {
 	backend := newFakeBackend(permissions.RoleAdmin)
 	handler := newHandler(t, backend, func(options *Options) { options.MaxBodyBytes = 64 })
 	recorder := httptest.NewRecorder()
-	request := formRequest(http.MethodPost, "/login", url.Values{"csrf": {"token"}, "email": {strings.Repeat("a", 100)}, "password": {backend.password}}, "https://this.dev.privacyperfect.com")
+	request := formRequest(http.MethodPost, "/oauth/login", url.Values{"csrf": {"token"}, "email": {strings.Repeat("a", 100)}, "password": {backend.password}}, "https://this.dev.privacyperfect.com")
 	request.AddCookie(&http.Cookie{Name: LoginCSRFCookie, Value: "token"})
 	handler.ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusBadRequest || backend.authCalls != 0 {

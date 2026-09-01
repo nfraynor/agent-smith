@@ -46,7 +46,7 @@ func (b *Bridge) getConsent(writer http.ResponseWriter, request *http.Request) {
 	}
 	csrfCookie, err := request.Cookie(oauthui.CSRFCookieName)
 	if err != nil || b.Store.ValidateCSRF(sessionCookie, csrfCookie.Value) != nil {
-		http.Redirect(writer, request, "/login?transaction="+url.QueryEscape(transaction), http.StatusSeeOther)
+		http.Redirect(writer, request, "/oauth/login?transaction="+url.QueryEscape(transaction), http.StatusSeeOther)
 		return
 	}
 	client, err := b.Store.GetClient(pending.Request.ClientID)
@@ -104,12 +104,12 @@ func (b *Bridge) postConsent(writer http.ResponseWriter, request *http.Request) 
 func (b *Bridge) consentUser(writer http.ResponseWriter, request *http.Request, transaction string) (string, localoauth.User, bool) {
 	cookie, err := request.Cookie(oauthui.SessionCookieName)
 	if err != nil {
-		http.Redirect(writer, request, "/login?transaction="+url.QueryEscape(transaction), http.StatusSeeOther)
+		http.Redirect(writer, request, "/oauth/login?transaction="+url.QueryEscape(transaction), http.StatusSeeOther)
 		return "", localoauth.User{}, false
 	}
 	_, user, err := b.Store.GetSession(cookie.Value)
 	if err != nil || !user.Enabled || user.MustChangePassword {
-		http.Redirect(writer, request, "/login?transaction="+url.QueryEscape(transaction), http.StatusSeeOther)
+		http.Redirect(writer, request, "/oauth/login?transaction="+url.QueryEscape(transaction), http.StatusSeeOther)
 		return "", localoauth.User{}, false
 	}
 	return cookie.Value, user, true

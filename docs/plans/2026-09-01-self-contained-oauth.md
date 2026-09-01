@@ -38,8 +38,7 @@ in compatibility fixtures rather than weakening the core protocol.
 - Require a canonical HTTPS `public_origin`; development uses
   `https://this.dev.privacyperfect.com`. Never derive issuer URLs from request headers.
 - The exact MCP resource identifier is `<public-origin>/mcp`.
-- HAProxy forwards `/mcp`, `/oauth/*`, `/login`, `/logout`, `/admin/*`, and
-  `/.well-known/*` without path rewriting. HAProxy continues to terminate TLS.
+- HAProxy forwards `/mcp`, `/mcp/*`, `/oauth/*`, `/.well-known/*`, and `/health` without path rewriting. HAProxy continues to terminate TLS.
 - Store OAuth/account state in one transactional file below `/data`, opened by one
   RemoteOps process. Multiple replicas require a future shared database.
 - Consume the first administrator email/password only when the account store is
@@ -47,7 +46,7 @@ in compatibility fixtures rather than weakening the core protocol.
   image layers, or source control.
 - Keep `auth.mode: bearer` for rollback and non-browser automation. Make
   `auth.mode: oauth-local` the documented normal deployment after acceptance.
-- `/health` stays public and contains no identity/store details. `/ready` and `/mcp`
+- `/health` stays public and contains no identity/store details. `/mcp/ready` and `/mcp`
   require an audience-bound access token.
 
 ## Scope
@@ -115,13 +114,13 @@ Rules:
 | `GET /.well-known/oauth-authorization-server` | Authorization-server metadata | Public |
 | `POST /oauth/register` | Restricted DCR for public PKCE clients | Public, rate-limited |
 | `GET /oauth/authorize` | Validate/resume browser authorization | Browser session |
-| `GET, POST /login` | Local sign-in | Public, CSRF-protected/rate-limited |
-| `POST /logout` | End browser session | Browser session plus CSRF |
+| `GET, POST /oauth/login` | Local sign-in | Public, CSRF-protected/rate-limited |
+| `POST /oauth/logout` | End browser session | Browser session plus CSRF |
 | `POST /oauth/token` | Code exchange and refresh grant | Public-client rules/rate limit |
 | `POST /oauth/revoke` | Revoke token or token family | Client-bound request |
-| `GET, POST /admin/*` | Local user/session administration | Admin session plus CSRF |
+| `GET, POST /oauth/admin/*` | Local user/session administration | Admin session plus CSRF |
 | `POST /mcp` | Streamable HTTP MCP | Audience-bound access token |
-| `GET /ready` | Docker-backed readiness | Audience-bound access token |
+| `GET /mcp/ready` | Docker-backed readiness | Audience-bound access token |
 
 OAuth endpoints return OAuth-shaped errors. A resource 401 keeps RemoteOps' stable
 JSON error and adds the compliant `WWW-Authenticate` discovery challenge. Never

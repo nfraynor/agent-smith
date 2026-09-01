@@ -141,14 +141,14 @@ func (b *Bridge) Authorize(_ context.Context, request *http.Request, input oauth
 		_, ok := b.pending[transaction]
 		b.mu.Unlock()
 		if ok {
-			return oauthserver.AuthorizationDecision{LoginURL: b.Issuer + "/login?transaction=" + url.QueryEscape(transaction)}, nil
+			return oauthserver.AuthorizationDecision{LoginURL: b.Issuer + "/oauth/login?transaction=" + url.QueryEscape(transaction)}, nil
 		}
 	}
 	token, err := b.createPending(input)
 	if err != nil {
 		return oauthserver.AuthorizationDecision{}, err
 	}
-	return oauthserver.AuthorizationDecision{LoginURL: b.Issuer + "/login?transaction=" + url.QueryEscape(token)}, nil
+	return oauthserver.AuthorizationDecision{LoginURL: b.Issuer + "/oauth/login?transaction=" + url.QueryEscape(token)}, nil
 }
 
 func (b *Bridge) createPending(input oauthserver.AuthorizationRequest) (string, error) {

@@ -87,10 +87,10 @@ func newOAuthRuntime(cfg config.Config, auditService *audit.Service, logger *slo
 	mux.Handle("/.well-known/", protocolHandler)
 	mux.Handle("/oauth/consent", bridge.ConsentHandler())
 	mux.Handle("/oauth/", protocolHandler)
-	mux.Handle("/login", ui)
-	mux.Handle("/logout", ui)
-	mux.Handle("/account/", ui)
-	mux.Handle("/admin/", ui)
+	mux.Handle("/oauth/login", ui)
+	mux.Handle("/oauth/logout", ui)
+	mux.Handle("/oauth/account/", ui)
+	mux.Handle("/oauth/admin/", ui)
 
 	runtime := &oauthRuntime{
 		authenticator: oauthbridge.AccessAuthenticator{Bridge: bridge}, handler: auditOAuthProtocol(mux, auditService),

@@ -29,7 +29,7 @@ No Auth0, Google Workspace, Keycloak, or other identity service is required.
    docker compose -f docker-compose.safe.yml logs --tail 100 remoteops
    ```
 
-4. Open `https://this.dev.privacyperfect.com/admin/users`, sign in with the bootstrap
+4. Open `https://this.dev.privacyperfect.com/oauth/admin/users`, sign in with the bootstrap
    email and the contents of the secret file, and change the temporary password.
    Create one account per allowed user and assign the smallest appropriate role.
 
@@ -44,20 +44,18 @@ rewriting them:
 
 ```text
 /mcp
+/mcp/*
 /.well-known/*
 /oauth/*
-/login
-/logout
-/account/*
-/admin/*
+/health
 ```
 
 Both containers must share a Docker network, or HAProxy must be able to reach the
 loopback-published RemoteOps port. A path ACL can look like:
 
 ```haproxy
-acl is_remoteops_path path /mcp /login /logout
-acl is_remoteops_path path_beg /.well-known/ /oauth/ /account/ /admin/
+acl is_remoteops_path path /mcp /health
+acl is_remoteops_path path_beg /mcp/ /.well-known/ /oauth/
 use_backend remoteops_mcp if { hdr(host) -i this.dev.privacyperfect.com } is_remoteops_path
 
 backend remoteops_mcp
@@ -97,7 +95,7 @@ upgrade; callbacks are exact-matched and never wildcarded.
 
 ## User and incident operations
 
-- Manage users at `/admin/users`.
+- Manage users at `/oauth/admin/users`.
 - Disabling a user, changing a role/password, or revoking sessions invalidates that
   user's existing browser sessions and OAuth tokens immediately.
 - Back up the complete `/data` volume consistently. It contains `oauth.db`, audit

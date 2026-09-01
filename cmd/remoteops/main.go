@@ -139,16 +139,12 @@ func main() {
 	if oauthHandler != nil {
 		mux.Handle("/.well-known/", oauthHandler)
 		mux.Handle("/oauth/", oauthHandler)
-		mux.Handle("/login", oauthHandler)
-		mux.Handle("/logout", oauthHandler)
-		mux.Handle("/account/", oauthHandler)
-		mux.Handle("/admin/", oauthHandler)
 	}
 	mux.Handle("/mcp", httpRateLimit(httpLimiter, authMiddleware.Wrap(originProtection.Handler(mcpHandler))))
 	mux.HandleFunc("GET /health", func(writer http.ResponseWriter, _ *http.Request) {
 		writeJSON(writer, http.StatusOK, map[string]any{"status": "healthy", "version": version, "docker": map[bool]string{true: "configured", false: "disabled"}[cfg.Docker.Enabled], "configured": true, "godMode": cfg.GodMode})
 	})
-	mux.Handle("GET /ready", authMiddleware.Wrap(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	mux.Handle("GET /mcp/ready", authMiddleware.Wrap(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if dockerService != nil {
 			if _, dockerErr := dockerService.List(request.Context(), true); dockerErr != nil {
 				writeJSON(writer, http.StatusServiceUnavailable, map[string]any{"status": "not_ready", "error": "Docker is unavailable"})

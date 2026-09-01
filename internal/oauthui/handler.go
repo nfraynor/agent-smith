@@ -158,16 +158,16 @@ func New(options Options) (*Handler, error) {
 		}).Parse(adminPage)),
 	}
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /login", h.getLogin)
-	mux.HandleFunc("POST /login", h.postLogin)
-	mux.HandleFunc("POST /logout", h.postLogout)
-	mux.HandleFunc("GET /account/password", h.getPassword)
-	mux.HandleFunc("POST /account/password", h.postPassword)
-	mux.HandleFunc("GET /admin/users", h.getUsers)
-	mux.HandleFunc("POST /admin/users/create", h.postCreateUser)
-	mux.HandleFunc("POST /admin/users/{id}/update", h.postUpdateUser)
-	mux.HandleFunc("POST /admin/users/{id}/reset-password", h.postResetPassword)
-	mux.HandleFunc("POST /admin/users/{id}/revoke-sessions", h.postRevokeSessions)
+	mux.HandleFunc("GET /oauth/login", h.getLogin)
+	mux.HandleFunc("POST /oauth/login", h.postLogin)
+	mux.HandleFunc("POST /oauth/logout", h.postLogout)
+	mux.HandleFunc("GET /oauth/account/password", h.getPassword)
+	mux.HandleFunc("POST /oauth/account/password", h.postPassword)
+	mux.HandleFunc("GET /oauth/admin/users", h.getUsers)
+	mux.HandleFunc("POST /oauth/admin/users/create", h.postCreateUser)
+	mux.HandleFunc("POST /oauth/admin/users/{id}/update", h.postUpdateUser)
+	mux.HandleFunc("POST /oauth/admin/users/{id}/reset-password", h.postResetPassword)
+	mux.HandleFunc("POST /oauth/admin/users/{id}/revoke-sessions", h.postRevokeSessions)
 	h.mux = mux
 	return h, nil
 }
@@ -236,7 +236,7 @@ func (h *Handler) postLogin(w http.ResponseWriter, r *http.Request) {
 	h.setCookie(w, CSRFCookieName, credentials.CSRFToken, credentials.ExpiresAt, true)
 	h.record(AuditEvent{Actor: user.Email, Action: "login", Success: true})
 	if user.MustChangePassword {
-		h.redirect(w, r, "/account/password", transaction)
+		h.redirect(w, r, "/oauth/account/password", transaction)
 		return
 	}
 	h.redirectAfterLogin(w, r, transaction)
@@ -313,7 +313,7 @@ func (h *Handler) postLogout(w http.ResponseWriter, r *http.Request) {
 	_ = h.backend.RevokeSession(token)
 	h.clearAuthCookies(w)
 	h.record(AuditEvent{Actor: user.Email, Action: "logout", Success: true})
-	h.redirect(w, r, "/login", "")
+	h.redirect(w, r, "/oauth/login", "")
 }
 
 func (h *Handler) getUsers(w http.ResponseWriter, r *http.Request) {
@@ -398,7 +398,7 @@ func (h *Handler) adminMutation(w http.ResponseWriter, r *http.Request, action, 
 		return
 	}
 	h.record(AuditEvent{Actor: actor.Email, Action: action, Target: target, Success: true})
-	h.redirect(w, r, "/admin/users", "")
+	h.redirect(w, r, "/oauth/admin/users", "")
 }
 
 func (h *Handler) requireAdmin(w http.ResponseWriter, r *http.Request) (Session, User, string, string, bool) {
@@ -416,19 +416,19 @@ func (h *Handler) requireAdmin(w http.ResponseWriter, r *http.Request) (Session,
 func (h *Handler) requireSession(w http.ResponseWriter, r *http.Request) (Session, User, string, string, bool) {
 	sessionCookie, err := r.Cookie(SessionCookieName)
 	if err != nil || sessionCookie.Value == "" {
-		h.redirect(w, r, "/login", cleanTransaction(r.URL.Query().Get("transaction")))
+		h.redirect(w, r, "/oauth/login", cleanTransaction(r.URL.Query().Get("transaction")))
 		return Session{}, User{}, "", "", false
 	}
 	session, user, err := h.backend.GetSession(sessionCookie.Value)
 	if err != nil || !user.Enabled || !session.ExpiresAt.After(h.now()) {
 		h.clearAuthCookies(w)
-		h.redirect(w, r, "/login", cleanTransaction(r.URL.Query().Get("transaction")))
+		h.redirect(w, r, "/oauth/login", cleanTransaction(r.URL.Query().Get("transaction")))
 		return Session{}, User{}, "", "", false
 	}
 	csrfCookie, err := r.Cookie(CSRFCookieName)
 	if err != nil || csrfCookie.Value == "" || h.backend.ValidateCSRF(sessionCookie.Value, csrfCookie.Value) != nil {
 		h.clearAuthCookies(w)
-		h.redirect(w, r, "/login", "")
+		h.redirect(w, r, "/oauth/login", "")
 		return Session{}, User{}, "", "", false
 	}
 	return session, user, sessionCookie.Value, csrfCookie.Value, true
@@ -450,7 +450,7 @@ func (h *Handler) redirectAfterLogin(w http.ResponseWriter, r *http.Request, tra
 		h.redirect(w, r, "/oauth/authorize", transaction)
 		return
 	}
-	h.redirect(w, r, "/admin/users", "")
+	h.redirect(w, r, "/oauth/admin/users", "")
 }
 
 func (h *Handler) redirect(w http.ResponseWriter, r *http.Request, path, transaction string) {
@@ -461,11 +461,11 @@ func (h *Handler) redirect(w http.ResponseWriter, r *http.Request, path, transac
 }
 
 func (h *Handler) setCookie(w http.ResponseWriter, name, value string, expires time.Time, httpOnly bool) {
-	http.SetCookie(w, &http.Cookie{Name: name, Value: value, Path: "/", Secure: true, HttpOnly: httpOnly, SameSite: http.SameSiteLaxMode, Expires: expires, MaxAge: max(1, int(expires.Sub(h.now()).Seconds()))})
+	http.SetCookie(w, &http.Cookie{Name: name, Value: value, Path: "/oauth", Secure: true, HttpOnly: httpOnly, SameSite: http.SameSiteLaxMode, Expires: expires, MaxAge: max(1, int(expires.Sub(h.now()).Seconds()))})
 }
 
 func (h *Handler) clearCookie(w http.ResponseWriter, name string) {
-	http.SetCookie(w, &http.Cookie{Name: name, Path: "/", Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: -1, Expires: time.Unix(1, 0)})
+	http.SetCookie(w, &http.Cookie{Name: name, Path: "/oauth", Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: -1, Expires: time.Unix(1, 0)})
 }
 
 func (h *Handler) clearAuthCookies(w http.ResponseWriter) {

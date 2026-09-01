@@ -37,8 +37,7 @@ docker compose -f docker-compose.safe.yml up -d
 ```
 
 Put a TLS reverse proxy such as HAProxy, Caddy, nginx, or Traefik in front of the
-service. Forward `/mcp`, `/.well-known/*`, `/oauth/*`, `/login`, `/logout`,
-`/account/*`, and `/admin/*` without rewriting paths. Do not publish RemoteOps as
+service. Forward `/mcp`, `/mcp/*`, `/.well-known/*`, `/oauth/*`, and `/health` without rewriting paths. Do not publish RemoteOps as
 plaintext HTTP on the public internet.
 
 ## Endpoints and authentication
@@ -47,11 +46,11 @@ plaintext HTTP on the public internet.
 | --- | --- | --- |
 | `POST /mcp` | OAuth access token | Stateless Streamable HTTP MCP |
 | `GET /health` | None | Process liveness; contains no secrets |
-| `GET /ready` | OAuth access token | Docker-backed readiness |
+| `GET /mcp/ready` | OAuth access token | Docker-backed readiness |
 | `GET /.well-known/*` | None | MCP/OAuth discovery metadata |
 | `/oauth/*` | OAuth flow | Registration, authorization, token and revocation |
-| `/login`, `/account/*` | Local browser session | Sign-in and password change |
-| `/admin/*` | Local admin session | User, role, password and session administration |
+| `/oauth/login`, `/oauth/account/*` | Local browser session | Sign-in and password change |
+| `/oauth/admin/*` | Local admin session | User, role, password and session administration |
 
 Clients connect to `https://remoteops.example/mcp`. RemoteOps advertises its embedded
 OAuth server, dynamically registers an allowlisted public client, and shows the local
@@ -60,7 +59,7 @@ and are revoked as a family on replay. Credentials are stored only as hashes.
 
 First startup creates one administrator from `REMOTEOPS_BOOTSTRAP_EMAIL` and the
 Docker secret. After changing the temporary password, that administrator manages
-individual accounts at `/admin/users`. Disabling a user, changing a role/password,
+individual accounts at `/oauth/admin/users`. Disabling a user, changing a role/password,
 or revoking sessions immediately invalidates that user's sessions and OAuth tokens.
 
 Legacy `auth.mode: bearer` remains available for automation and emergency rollback,
