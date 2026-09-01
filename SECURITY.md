@@ -20,12 +20,16 @@ to reach that deployment as a host-root credential.
 
 ## Operational requirements
 
-- Use a long, randomly generated bearer token and store it outside version control.
+- Use local OAuth for ChatGPT/Claude users. Keep bootstrap passwords and the OAuth
+  database outside version control and back up `/data` securely.
+- Treat static bearer mode as a legacy automation or emergency rollback path; its
+  token must be random and must not be shared among interactive users.
 - Terminate TLS at a trusted reverse proxy and restrict source networks.
 - Keep the default Viewer role unless mutation access is deliberately required.
 - Mount only the directories and Compose projects RemoteOps must manage.
-- Protect `/data`; it contains configuration backups and operational history.
-- Review JSON audit records and rotate credentials after suspected exposure.
+- Protect `/data`; it contains password hashes, grants, configuration backups, and
+  operational history. Run one replica with the embedded database.
+- Review JSON audit records and revoke sessions after suspected exposure.
 - Pin production images to an immutable digest and update deliberately.
 
 ## Reporting vulnerabilities

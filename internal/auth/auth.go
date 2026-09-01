@@ -72,6 +72,7 @@ type Attempt struct {
 type Middleware struct {
 	Authenticator Authenticator
 	OnAttempt     func(Attempt)
+	Challenge     string
 }
 
 func (m Middleware) Wrap(next http.Handler) http.Handler {
@@ -117,8 +118,12 @@ func (m Middleware) reject(writer http.ResponseWriter, reason string) {
 	if m.OnAttempt != nil {
 		m.OnAttempt(Attempt{Success: false, Reason: reason})
 	}
+	challenge := m.Challenge
+	if challenge == "" {
+		challenge = `Bearer realm="remoteops"`
+	}
 	writer.Header().Set("Content-Type", "application/json")
-	writer.Header().Set("WWW-Authenticate", `Bearer realm="remoteops"`)
+	writer.Header().Set("WWW-Authenticate", challenge)
 	writer.WriteHeader(http.StatusUnauthorized)
 	_ = json.NewEncoder(writer).Encode(map[string]string{
 		"code": "UNAUTHENTICATED", "message": "Valid bearer authentication is required.",

@@ -4,6 +4,8 @@
 !.env.example
 *.pem
 *.key
+secrets/*
+!secrets/README.md
 
 # Editor and operating-system files
 .idea/

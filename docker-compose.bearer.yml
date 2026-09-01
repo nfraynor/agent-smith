@@ -5,17 +5,13 @@ services:
     restart: unless-stopped
     environment:
       REMOTEOPS_CONFIG: /config/remoteops.yaml
-      REMOTEOPS_BOOTSTRAP_EMAIL: ${REMOTEOPS_BOOTSTRAP_EMAIL:-}
-      REMOTEOPS_BOOTSTRAP_PASSWORD_FILE: /run/secrets/remoteops_bootstrap_password
-      REMOTEOPS_TOKEN: ${REMOTEOPS_TOKEN:-}
+      REMOTEOPS_TOKEN: ${REMOTEOPS_TOKEN:?set REMOTEOPS_TOKEN}
       REMOTEOPS_GODMODE: "false"
-    secrets:
-      - remoteops_bootstrap_password
     ports:
       - "${REMOTEOPS_BIND:-127.0.0.1}:${REMOTEOPS_PORT:-8080}:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ${REMOTEOPS_CONFIG_FILE:-./remoteops.example.yaml}:/config/remoteops.yaml:ro
+      - ${REMOTEOPS_CONFIG_FILE:-./remoteops.bearer.example.yaml}:/config/remoteops.yaml:ro
       - ./managed:/managed
       - remoteops-data:/data
     healthcheck:
@@ -24,10 +20,6 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
-
-secrets:
-  remoteops_bootstrap_password:
-    file: ${REMOTEOPS_BOOTSTRAP_PASSWORD_FILE:-./secrets/remoteops_bootstrap_password}
 
 volumes:
   remoteops-data:

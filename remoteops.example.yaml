@@ -3,9 +3,21 @@ server:
   listen: ":8080"
 
 auth:
-  mode: bearer
-  token_env: REMOTEOPS_TOKEN
-  actor: remote-client
+  mode: oauth-local
+  oauth_local:
+    # Change this to the exact public HTTPS origin before deployment.
+    public_origin: https://this.dev.privacyperfect.com
+    data_file: /data/oauth.db
+    bootstrap_email_env: REMOTEOPS_BOOTSTRAP_EMAIL
+    bootstrap_password_file_env: REMOTEOPS_BOOTSTRAP_PASSWORD_FILE
+    allowed_redirect_uris:
+      - https://chatgpt.com/connector_platform_oauth_redirect
+      - https://platform.openai.com/apps-manage/oauth
+      - https://claude.ai/api/mcp/auth_callback
+      - https://claude.com/api/mcp/auth_callback
+    access_token_minutes: 15
+    refresh_token_days: 30
+    browser_session_hours: 8
 
 docker:
   enabled: true

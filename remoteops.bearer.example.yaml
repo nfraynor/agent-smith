@@ -1,0 +1,35 @@
+server:
+  name: remoteops
+  listen: ":8080"
+
+auth:
+  mode: bearer
+  token_env: REMOTEOPS_TOKEN
+  actor: emergency-operator
+
+docker:
+  enabled: true
+  socket: unix:///var/run/docker.sock
+
+filesystem:
+  enabled: true
+  allowed_roots:
+    - /managed
+
+permissions:
+  default_role: admin
+
+limits:
+  command_timeout_seconds: 30
+  max_output_bytes: 1048576
+  max_request_bytes: 1048576
+  max_file_bytes: 10485760
+
+audit:
+  path: /data/audit.jsonl
+  max_body_bytes: 16384
+
+change_control:
+  directory: /data/changes
+  retention_days: 30
+

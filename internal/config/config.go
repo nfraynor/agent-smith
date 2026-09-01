@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -35,9 +36,23 @@ type Server struct {
 }
 
 type Auth struct {
-	Mode     string `yaml:"mode"`
-	TokenEnv string `yaml:"token_env"`
-	Actor    string `yaml:"actor"`
+	Mode       string     `yaml:"mode"`
+	TokenEnv   string     `yaml:"token_env"`
+	Actor      string     `yaml:"actor"`
+	OAuthLocal OAuthLocal `yaml:"oauth_local"`
+}
+
+type OAuthLocal struct {
+	PublicOrigin             string   `yaml:"public_origin"`
+	DataFile                 string   `yaml:"data_file"`
+	BootstrapEmailEnv        string   `yaml:"bootstrap_email_env"`
+	BootstrapPasswordFileEnv string   `yaml:"bootstrap_password_file_env"`
+	AllowedRedirectURIs      []string `yaml:"allowed_redirect_uris"`
+	AccessTokenMinutes       int      `yaml:"access_token_minutes"`
+	RefreshTokenDays         int      `yaml:"refresh_token_days"`
+	BrowserSessionHours      int      `yaml:"browser_session_hours"`
+	BootstrapEmail           string   `yaml:"-"`
+	BootstrapPassword        string   `yaml:"-"`
 }
 
 type Docker struct {
@@ -89,8 +104,15 @@ type Limits struct {
 
 func Defaults() Config {
 	return Config{
-		Server:      Server{Listen: ":8080"},
-		Auth:        Auth{Mode: "bearer", TokenEnv: "REMOTEOPS_TOKEN", Actor: "remote-client"},
+		Server: Server{Listen: ":8080"},
+		Auth: Auth{
+			Mode: "bearer", TokenEnv: "REMOTEOPS_TOKEN", Actor: "remote-client",
+			OAuthLocal: OAuthLocal{
+				DataFile: "/data/oauth.db", BootstrapEmailEnv: "REMOTEOPS_BOOTSTRAP_EMAIL",
+				BootstrapPasswordFileEnv: "REMOTEOPS_BOOTSTRAP_PASSWORD_FILE",
+				AccessTokenMinutes:       15, RefreshTokenDays: 30, BrowserSessionHours: 8,
+			},
+		},
 		Docker:      Docker{Enabled: true, Socket: "unix:///var/run/docker.sock"},
 		Permissions: Permissions{DefaultRole: permissions.RoleViewer},
 		Changes:     Changes{RetentionDays: 30, MaxRecords: 10000},
@@ -157,6 +179,22 @@ func ParseGodMode(lookup func(string) (string, bool)) (bool, error) {
 }
 
 func (c *Config) resolveSecrets(lookup func(string) (string, bool)) error {
+	if c.Auth.Mode == "oauth-local" {
+		if c.Auth.OAuthLocal.BootstrapEmailEnv != "" {
+			c.Auth.OAuthLocal.BootstrapEmail, _ = lookup(c.Auth.OAuthLocal.BootstrapEmailEnv)
+		}
+		if c.Auth.OAuthLocal.BootstrapPasswordFileEnv != "" {
+			secretPath, ok := lookup(c.Auth.OAuthLocal.BootstrapPasswordFileEnv)
+			if ok && secretPath != "" {
+				secret, err := os.ReadFile(secretPath)
+				if err != nil {
+					return fmt.Errorf("read bootstrap password file: %w", err)
+				}
+				c.Auth.OAuthLocal.BootstrapPassword = strings.TrimSuffix(strings.TrimSuffix(string(secret), "\n"), "\r")
+			}
+		}
+		return nil
+	}
 	if c.Auth.TokenEnv == "" {
 		return errors.New("auth.token_env is required")
 	}
@@ -175,8 +213,15 @@ func (c Config) Validate() error {
 	if strings.TrimSpace(c.Server.Listen) == "" {
 		return errors.New("server.listen is required")
 	}
-	if c.Auth.Mode != "bearer" {
-		return fmt.Errorf("auth.mode must be %q", "bearer")
+	if c.Auth.Mode != "bearer" && c.Auth.Mode != "oauth-local" {
+		return errors.New("auth.mode must be \"bearer\" or \"oauth-local\"")
+	}
+	if c.Auth.Mode == "bearer" {
+		if c.BearerToken == "" {
+			return errors.New("resolved bearer token must not be empty")
+		}
+	} else if err := validateOAuthLocal(c.Auth.OAuthLocal); err != nil {
+		return fmt.Errorf("auth.oauth_local: %w", err)
 	}
 	if _, err := permissions.ParseRole(string(c.Permissions.DefaultRole)); err != nil {
 		return fmt.Errorf("permissions.default_role: %w", err)
@@ -197,6 +242,47 @@ func (c Config) Validate() error {
 		c.Limits.MaxExecutionSeconds <= 0 || c.Limits.MaxRequestBytes <= 0 ||
 		c.Limits.RequestsPerMinute <= 0 || c.Limits.MutationsPerMinute <= 0 {
 		return errors.New("all limits must be positive")
+	}
+	return nil
+}
+
+func validateOAuthLocal(config OAuthLocal) error {
+	origin, err := url.Parse(config.PublicOrigin)
+	if err != nil || origin.Scheme != "https" || origin.Host == "" || origin.User != nil ||
+		origin.RawQuery != "" || origin.Fragment != "" || (origin.Path != "" && origin.Path != "/") {
+		return errors.New("public_origin must be an HTTPS origin without a path, query, fragment, or userinfo")
+	}
+	if !filepath.IsAbs(config.DataFile) {
+		return errors.New("data_file must be absolute")
+	}
+	dataRoot := filepath.Clean("/data")
+	dataFile := filepath.Clean(config.DataFile)
+	relative, err := filepath.Rel(dataRoot, dataFile)
+	if err != nil || relative == "." || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return errors.New("data_file must be a file below /data")
+	}
+	if config.AccessTokenMinutes < 1 || config.AccessTokenMinutes > 60 {
+		return errors.New("access_token_minutes must be between 1 and 60")
+	}
+	if config.RefreshTokenDays < 1 || config.RefreshTokenDays > 90 {
+		return errors.New("refresh_token_days must be between 1 and 90")
+	}
+	if config.BrowserSessionHours < 1 || config.BrowserSessionHours > 24 {
+		return errors.New("browser_session_hours must be between 1 and 24")
+	}
+	seen := make(map[string]struct{}, len(config.AllowedRedirectURIs))
+	for _, value := range config.AllowedRedirectURIs {
+		redirect, parseErr := url.Parse(value)
+		if parseErr != nil || redirect.Scheme != "https" || redirect.Host == "" || redirect.User != nil || redirect.Fragment != "" {
+			return fmt.Errorf("allowed redirect URI %q must be an absolute HTTPS URL without userinfo or fragment", value)
+		}
+		if redirect.String() != value {
+			return fmt.Errorf("allowed redirect URI %q is not canonical", value)
+		}
+		if _, exists := seen[value]; exists {
+			return fmt.Errorf("allowed redirect URI %q is duplicated", value)
+		}
+		seen[value] = struct{}{}
 	}
 	return nil
 }

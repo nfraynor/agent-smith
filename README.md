@@ -17,15 +17,18 @@ Requirements: Docker Engine with Docker Compose. No Go runtime or host agent is
 required.
 
 ```sh
-export REMOTEOPS_TOKEN="$(openssl rand -hex 32)"
+mkdir -p secrets
+openssl rand -base64 32 > secrets/remoteops_bootstrap_password
+chmod 600 secrets/remoteops_bootstrap_password
+export REMOTEOPS_BOOTSTRAP_EMAIL="admin@example.com"
 docker compose -f docker-compose.safe.yml up -d --build
 curl http://127.0.0.1:8080/health
 ```
 
 The safe example binds to loopback, mounts the Docker socket, exposes `./managed` as
-the single managed root, persists audit/change data in a named volume, and uses
+the single managed root, persists audit/change/OAuth data in a named volume, and uses
 `remoteops.example.yaml`. Copy that file and set `REMOTEOPS_CONFIG_FILE` when adding
-real Compose projects or changing permissions:
+real Compose projects, changing permissions, or changing the public HTTPS origin:
 
 ```sh
 cp remoteops.example.yaml remoteops.yaml
@@ -33,22 +36,35 @@ export REMOTEOPS_CONFIG_FILE=./remoteops.yaml
 docker compose -f docker-compose.safe.yml up -d
 ```
 
-Put a TLS reverse proxy such as Caddy, nginx, or Traefik in front of `/mcp`. Do not
-publish RemoteOps as plaintext HTTP on the public internet.
+Put a TLS reverse proxy such as HAProxy, Caddy, nginx, or Traefik in front of the
+service. Forward `/mcp`, `/.well-known/*`, `/oauth/*`, `/login`, `/logout`,
+`/account/*`, and `/admin/*` without rewriting paths. Do not publish RemoteOps as
+plaintext HTTP on the public internet.
 
 ## Endpoints and authentication
 
 | Endpoint | Authentication | Purpose |
 | --- | --- | --- |
-| `POST /mcp` | Bearer token | Stateless Streamable HTTP MCP |
+| `POST /mcp` | OAuth access token | Stateless Streamable HTTP MCP |
 | `GET /health` | None | Process liveness; contains no secrets |
-| `GET /ready` | Bearer token | Docker-backed readiness |
+| `GET /ready` | OAuth access token | Docker-backed readiness |
+| `GET /.well-known/*` | None | MCP/OAuth discovery metadata |
+| `/oauth/*` | OAuth flow | Registration, authorization, token and revocation |
+| `/login`, `/account/*` | Local browser session | Sign-in and password change |
+| `/admin/*` | Local admin session | User, role, password and session administration |
 
-Clients connect to `https://remoteops.example/mcp` and send
-`Authorization: Bearer <REMOTEOPS_TOKEN>`. The V1 authenticator maps this token to
-`auth.actor` and `permissions.default_role`. The interface remains replaceable for
-future OIDC, mTLS, API-key identities, and multiple users. Tokens are never returned
-and are redacted from audit data.
+Clients connect to `https://remoteops.example/mcp`. RemoteOps advertises its embedded
+OAuth server, dynamically registers an allowlisted public client, and shows the local
+login page. Access tokens are short-lived and audience-bound; refresh tokens rotate
+and are revoked as a family on replay. Credentials are stored only as hashes.
+
+First startup creates one administrator from `REMOTEOPS_BOOTSTRAP_EMAIL` and the
+Docker secret. After changing the temporary password, that administrator manages
+individual accounts at `/admin/users`. Disabling a user, changing a role/password,
+or revoking sessions immediately invalidates that user's sessions and OAuth tokens.
+
+Legacy `auth.mode: bearer` remains available for automation and emergency rollback,
+but is not recommended for interactive ChatGPT/Claude users.
 
 ## Configuration
 
@@ -59,7 +75,8 @@ different in-container path.
 Key sections in [remoteops.example.yaml](remoteops.example.yaml):
 
 - `server`: name and listen address.
-- `auth`: bearer mode, token environment variable, and audit actor.
+- `auth.oauth_local`: public origin, data file, bootstrap secret sources, exact
+  redirect allowlist, and token/session lifetimes.
 - `docker`: enablement and Docker API URI.
 - `filesystem.roots`: named absolute roots; `/` is rejected.
 - `compose.projects`: named absolute project directories and Compose files.
@@ -135,7 +152,10 @@ God Mode is disabled by default and enabled only by the exact startup value
 intentionally has no command denylist and can destroy or reboot the host.
 
 ```sh
-export REMOTEOPS_TOKEN="$(openssl rand -hex 32)"
+mkdir -p secrets
+openssl rand -base64 32 > secrets/remoteops_bootstrap_password
+chmod 600 secrets/remoteops_bootstrap_password
+export REMOTEOPS_BOOTSTRAP_EMAIL="admin@example.com"
 docker compose -f docker-compose.godmode.yml up -d --build
 ```
 
@@ -160,7 +180,13 @@ namespace tests must run only on disposable Linux infrastructure.
 
 ## Troubleshooting
 
-- `401 UNAUTHENTICATED`: send exactly one matching bearer header.
+- `401 UNAUTHENTICATED`: confirm the client completed OAuth and inspect the
+  `WWW-Authenticate` resource-metadata URL.
+- `OAuth store is empty`: set the bootstrap email and create the Docker secret.
+- OAuth callback rejected: add the exact current HTTPS callback URI to
+  `allowed_redirect_uris`; wildcards and fragments are rejected.
+- OAuth fails through HAProxy: forward every discovery, OAuth, login, account, and
+  admin path listed above, not only `/mcp`.
 - `Docker is unavailable`: confirm the socket mount, URI, and permissions.
 - `PATH_OUTSIDE_ALLOWED_ROOT`: use a configured root and safe relative path.
 - Compose project not found: configure and mount it at the same absolute container path.

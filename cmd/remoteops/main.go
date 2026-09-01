@@ -55,12 +55,28 @@ func main() {
 	}
 	defer auditService.Close()
 
-	authenticator, err := auth.NewBearer(cfg.BearerToken, cfg.Auth.Actor, cfg.Permissions.DefaultRole)
-	if err != nil {
-		logger.Error("authentication initialization failed", "error", err)
-		os.Exit(1)
+	var authenticator auth.Authenticator
+	var oauthHandler http.Handler
+	authChallenge := ""
+	if cfg.Auth.Mode == "bearer" {
+		authenticator, err = auth.NewBearer(cfg.BearerToken, cfg.Auth.Actor, cfg.Permissions.DefaultRole)
+		if err != nil {
+			logger.Error("authentication initialization failed", "error", err)
+			os.Exit(1)
+		}
+	} else {
+		var oauth *oauthRuntime
+		oauth, err = newOAuthRuntime(cfg, auditService, logger)
+		if err != nil {
+			logger.Error("local OAuth initialization failed", "error", err)
+			os.Exit(1)
+		}
+		defer oauth.Close()
+		authenticator = oauth.authenticator
+		oauthHandler = oauth.handler
+		authChallenge = oauth.challenge
 	}
-	authMiddleware := auth.Middleware{Authenticator: authenticator, OnAttempt: func(attempt auth.Attempt) {
+	authMiddleware := auth.Middleware{Authenticator: authenticator, Challenge: authChallenge, OnAttempt: func(attempt auth.Attempt) {
 		_ = auditService.Record(context.Background(), audit.Event{Actor: attempt.Actor, Action: "authentication", Allowed: attempt.Success, Success: attempt.Success, Error: attempt.Reason})
 	}}
 
@@ -106,7 +122,7 @@ func main() {
 		defer dockerClient.Close()
 		dockerService = remotedocker.New(dockerClient, cfg.Limits.MaxLogBytes)
 		diagnosticsService = diagnostics.New(dockerService, composeService, nil, nil, version, cfg.GodMode)
-		deploymentService = deployment.New(composeService, dockerService, diagnosticsService, deployment.ChangeRecorder{Store: changeStore, Actor: cfg.Auth.Actor}, deployment.Options{VerificationTimeout: time.Duration(cfg.Limits.MaxExecutionSeconds) * time.Second})
+		deploymentService = deployment.New(composeService, dockerService, diagnosticsService, deployment.ContextChangeRecorder{Store: changeStore, FallbackActor: cfg.Auth.Actor}, deployment.Options{VerificationTimeout: time.Duration(cfg.Limits.MaxExecutionSeconds) * time.Second})
 	}
 
 	godRunner := &godmode.Runner{Enabled: cfg.GodMode, NSenterPath: "/usr/bin/nsenter", DefaultTimeout: time.Duration(cfg.Limits.MaxExecutionSeconds) * time.Second, MaximumTimeout: time.Duration(cfg.Limits.MaxExecutionSeconds) * time.Second, MaxOutputBytes: int(cfg.Limits.MaxLogBytes)}
@@ -120,6 +136,14 @@ func main() {
 	originProtection := http.NewCrossOriginProtection()
 	mux := http.NewServeMux()
 	httpLimiter := limits.NewLimiter(cfg.Limits.RequestsPerMinute, cfg.Limits.MutationsPerMinute)
+	if oauthHandler != nil {
+		mux.Handle("/.well-known/", oauthHandler)
+		mux.Handle("/oauth/", oauthHandler)
+		mux.Handle("/login", oauthHandler)
+		mux.Handle("/logout", oauthHandler)
+		mux.Handle("/account/", oauthHandler)
+		mux.Handle("/admin/", oauthHandler)
+	}
 	mux.Handle("/mcp", httpRateLimit(httpLimiter, authMiddleware.Wrap(originProtection.Handler(mcpHandler))))
 	mux.HandleFunc("GET /health", func(writer http.ResponseWriter, _ *http.Request) {
 		writeJSON(writer, http.StatusOK, map[string]any{"status": "healthy", "version": version, "docker": map[bool]string{true: "configured", false: "disabled"}[cfg.Docker.Enabled], "configured": true, "godMode": cfg.GodMode})
@@ -146,7 +170,7 @@ func main() {
 	if cfg.GodMode {
 		logger.Warn("GOD MODE ENABLED: unrestricted host administration is available")
 	}
-	logger.Info("RemoteOps MCP listening", "address", cfg.Server.Listen, "version", version, "godMode", cfg.GodMode)
+	logger.Info("RemoteOps MCP listening", "address", cfg.Server.Listen, "version", version, "authMode", cfg.Auth.Mode, "godMode", cfg.GodMode)
 	if err = server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		logger.Error("HTTP server failed", "error", err)
 		os.Exit(1)
