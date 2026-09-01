@@ -3,6 +3,7 @@ server:
   listen: ":8080"
 
 auth:
+  # oauth-local is the runtime default; it is explicit here for operator clarity.
   mode: oauth-local
   oauth_local:
     # Change this to the exact public HTTPS origin before deployment.

@@ -25,6 +25,10 @@ docker compose -f docker-compose.safe.yml up -d --build
 curl http://127.0.0.1:8080/health
 ```
 
+`oauth-local` is the runtime default and the normal safe/God Mode Compose
+authentication mode. An existing configuration that explicitly sets
+`auth.mode: bearer` remains in bearer mode until the operator changes it.
+
 The safe example binds to loopback, mounts the Docker socket, exposes `./managed` as
 the single managed root, persists audit/change/OAuth data in a named volume, and uses
 `remoteops.example.yaml`. Copy that file and set `REMOTEOPS_CONFIG_FILE` when adding
@@ -62,8 +66,9 @@ Docker secret. After changing the temporary password, that administrator manages
 individual accounts at `/oauth/admin/users`. Disabling a user, changing a role/password,
 or revoking sessions immediately invalidates that user's sessions and OAuth tokens.
 
-Legacy `auth.mode: bearer` remains available for automation and emergency rollback,
-but is not recommended for interactive ChatGPT/Claude users.
+Static bearer authentication is an explicit opt-in for automation and emergency
+rollback through `remoteops.bearer.example.yaml` and `docker-compose.bearer.yml`; it
+is not recommended for interactive ChatGPT/Claude users.
 
 ## Configuration
 
@@ -184,6 +189,9 @@ namespace tests must run only on disposable Linux infrastructure.
 - `OAuth store is empty`: set the bootstrap email and create the Docker secret.
 - OAuth callback rejected: add the exact current HTTPS callback URI to
   `allowed_redirect_uris`; wildcards and fragments are rejected.
+- `/oauth/login` returns 404: the loaded configuration explicitly uses
+  `auth.mode: bearer`; change it to `oauth-local` (or start from
+  `remoteops.example.yaml`) and recreate the container.
 - OAuth fails through HAProxy: forward every discovery, OAuth, login, account, and
   admin path listed above, not only `/mcp`.
 - `Docker is unavailable`: confirm the socket mount, URI, and permissions.

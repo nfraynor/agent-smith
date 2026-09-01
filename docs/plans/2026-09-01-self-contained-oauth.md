@@ -44,8 +44,9 @@ in compatibility fixtures rather than weakening the core protocol.
 - Consume the first administrator email/password only when the account store is
   empty. Read the password from a Docker secret/file, never YAML, arguments, logs,
   image layers, or source control.
-- Keep `auth.mode: bearer` for rollback and non-browser automation. Make
-  `auth.mode: oauth-local` the documented normal deployment after acceptance.
+- Make `auth.mode: oauth-local` the runtime and normal deployment default. Keep
+  `auth.mode: bearer` only as an explicit rollback and non-browser automation
+  choice; never override an operator's explicit mode during an upgrade.
 - `/health` stays public and contains no identity/store details. `/mcp/ready` and `/mcp`
   require an audience-bound access token.
 

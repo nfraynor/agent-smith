@@ -7,6 +7,13 @@ import (
 	"testing"
 )
 
+func TestOAuthLocalIsDefaultAuthenticationMode(t *testing.T) {
+	cfg := Defaults()
+	if cfg.Auth.Mode != "oauth-local" {
+		t.Fatalf("default auth mode = %q, want oauth-local", cfg.Auth.Mode)
+	}
+}
+
 func TestLoadOAuthLocalConfigAndBootstrapSecret(t *testing.T) {
 	secretPath := filepath.Join(t.TempDir(), "bootstrap-password")
 	if err := os.WriteFile(secretPath, []byte("correct horse battery staple\n"), 0o600); err != nil {
@@ -16,7 +23,6 @@ func TestLoadOAuthLocalConfigAndBootstrapSecret(t *testing.T) {
 server:
   name: oauth-test
 auth:
-  mode: oauth-local
   oauth_local:
     public_origin: https://remoteops.example
     data_file: /data/oauth.db
@@ -35,6 +41,9 @@ permissions:
 	}))
 	if err != nil {
 		t.Fatal(err)
+	}
+	if cfg.Auth.Mode != "oauth-local" {
+		t.Fatalf("loaded auth mode = %q, want oauth-local", cfg.Auth.Mode)
 	}
 	if cfg.Auth.OAuthLocal.BootstrapEmail != "admin@example.com" || cfg.Auth.OAuthLocal.BootstrapPassword != "correct horse battery staple" {
 		t.Fatalf("bootstrap values not resolved: %#v", cfg.Auth.OAuthLocal)

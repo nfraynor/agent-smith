@@ -75,6 +75,7 @@ func TestGodModeParsingIsExactAndFailClosed(t *testing.T) {
 func TestValidationRejectsUnsafeAndAmbiguousResources(t *testing.T) {
 	config := Defaults()
 	config.Server.Name = "dev"
+	config.Auth.Mode = "bearer"
 	config.BearerToken = "x"
 	config.Filesystem.Roots = []Root{{Name: "host", Path: string(filepath.Separator)}}
 	if err := config.Validate(); err == nil {

@@ -2,6 +2,12 @@
 
 RemoteOps contains its own OAuth 2.1 authorization server and local user database.
 No Auth0, Google Workspace, Keycloak, or other identity service is required.
+`oauth-local` is the runtime default when `auth.mode` is omitted, and the normal safe
+and God Mode Compose deployments do not inject a static bearer token.
+
+An existing `remoteops.yaml` with `auth.mode: bearer` is intentionally not silently
+migrated. Change that value to `oauth-local` and configure `auth.oauth_local`, or copy
+the block from `remoteops.example.yaml`; bearer mode does not expose `/oauth/*`.
 
 ## First deployment
 

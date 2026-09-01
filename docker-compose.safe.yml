@@ -7,7 +7,6 @@ services:
       REMOTEOPS_CONFIG: /config/remoteops.yaml
       REMOTEOPS_BOOTSTRAP_EMAIL: ${REMOTEOPS_BOOTSTRAP_EMAIL:-}
       REMOTEOPS_BOOTSTRAP_PASSWORD_FILE: /run/secrets/remoteops_bootstrap_password
-      REMOTEOPS_TOKEN: ${REMOTEOPS_TOKEN:-}
       REMOTEOPS_GODMODE: "false"
     secrets:
       - remoteops_bootstrap_password

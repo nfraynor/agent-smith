@@ -20,10 +20,11 @@ to reach that deployment as a host-root credential.
 
 ## Operational requirements
 
-- Use local OAuth for ChatGPT/Claude users. Keep bootstrap passwords and the OAuth
-  database outside version control and back up `/data` securely.
-- Treat static bearer mode as a legacy automation or emergency rollback path; its
-  token must be random and must not be shared among interactive users.
+- Local OAuth is the runtime and normal Compose default for ChatGPT/Claude users.
+  Keep bootstrap passwords and the OAuth database outside version control and back
+  up `/data` securely.
+- Static bearer mode is an explicit automation or emergency rollback path; its token
+  must be random and must not be shared among interactive users.
 - Terminate TLS at a trusted reverse proxy and restrict source networks.
 - Keep the default Viewer role unless mutation access is deliberately required.
 - Mount only the directories and Compose projects RemoteOps must manage.

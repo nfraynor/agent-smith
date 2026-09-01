@@ -106,7 +106,7 @@ func Defaults() Config {
 	return Config{
 		Server: Server{Listen: ":8080"},
 		Auth: Auth{
-			Mode: "bearer", TokenEnv: "REMOTEOPS_TOKEN", Actor: "remote-client",
+			Mode: "oauth-local", TokenEnv: "REMOTEOPS_TOKEN", Actor: "remote-client",
 			OAuthLocal: OAuthLocal{
 				DataFile: "/data/oauth.db", BootstrapEmailEnv: "REMOTEOPS_BOOTSTRAP_EMAIL",
 				BootstrapPasswordFileEnv: "REMOTEOPS_BOOTSTRAP_PASSWORD_FILE",
@@ -124,8 +124,8 @@ func Defaults() Config {
 	}
 }
 
-// Load reads a YAML file, rejects unknown fields, resolves the configured bearer
-// token from the environment, and parses God Mode independently.
+// Load reads a YAML file, rejects unknown fields, resolves the selected
+// authentication mode's secrets, and parses God Mode independently.
 func Load(path string) (Config, error) {
 	return LoadWithEnv(path, os.LookupEnv)
 }
