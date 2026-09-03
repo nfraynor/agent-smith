@@ -102,6 +102,8 @@ upgrade; callbacks are exact-matched and never wildcarded.
 ## User and incident operations
 
 - Manage users at `/oauth/admin/users`.
+- Account changes require the signed-in administrator's own password each time. When
+  creating a user, this is separate from the new user's temporary password.
 - Disabling a user, changing a role/password, or revoking sessions invalidates that
   user's existing browser sessions and OAuth tokens immediately.
 - Back up the complete `/data` volume consistently. It contains `oauth.db`, audit

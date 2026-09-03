@@ -3,6 +3,7 @@
 package oauthui
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/base64"
@@ -25,6 +26,8 @@ const (
 	CSRFCookieName    = "__Host-remoteops_csrf"
 	LoginCSRFCookie   = "__Host-remoteops_login_csrf"
 )
+
+type styleNonceContextKey struct{}
 
 var (
 	ErrInvalidCredentials = errors.New("invalid credentials")
@@ -151,11 +154,13 @@ func New(options Options) (*Handler, error) {
 		maxBodyBytes: options.MaxBodyBytes, now: options.Now, audit: options.Audit,
 		passwordSlots:    make(chan struct{}, options.PasswordWorkers),
 		throttle:         newLoginThrottle(options.Now, options.LoginAttempts, options.LoginSourceAttempts, options.LoginWindow),
-		loginTemplate:    template.Must(template.New("login").Parse(loginPage)),
-		passwordTemplate: template.Must(template.New("password").Parse(passwordPage)),
+		loginTemplate:    template.Must(template.New("login").Parse(strings.Replace(enhancedLoginPage, "<link rel='stylesheet' href='/oauth/assets/app.css'>", "<style nonce='{{.StyleNonce}}'>{{.CSS}}</style>", 1))),
+		passwordTemplate: template.Must(template.New("password").Parse(strings.Replace(enhancedPasswordPage, "<link rel='stylesheet' href='/oauth/assets/app.css'>", "<style nonce='{{.StyleNonce}}'>{{.CSS}}</style>", 1))),
 		adminTemplate: template.Must(template.New("admin").Funcs(template.FuncMap{
-			"roleEq": func(role permissions.Role, want string) bool { return string(role) == want },
-		}).Parse(adminPage)),
+			"isViewer":   func(role permissions.Role) bool { return role == permissions.RoleViewer },
+			"isOperator": func(role permissions.Role) bool { return role == permissions.RoleOperator },
+			"isAdmin":    func(role permissions.Role) bool { return role == permissions.RoleAdmin },
+		}).Parse(strings.Replace(enhancedAdminPage, "<link rel='stylesheet' href='/oauth/assets/app.css'>", "<style nonce='{{.StyleNonce}}'>{{.CSS}}</style>", 1))),
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /oauth/login", h.getLogin)
@@ -173,7 +178,14 @@ func New(options Options) (*Handler, error) {
 }
 
 func (h *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
-	setSecurityHeaders(writer)
+	nonce, err := randomToken()
+	if err != nil {
+		setSecurityHeaders(writer, "")
+		h.serverError(writer)
+		return
+	}
+	setSecurityHeaders(writer, nonce)
+	request = request.WithContext(context.WithValue(request.Context(), styleNonceContextKey{}, nonce))
 	h.mux.ServeHTTP(writer, request)
 }
 
@@ -185,7 +197,7 @@ func (h *Handler) getLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.setCookie(w, LoginCSRFCookie, csrf, h.now().Add(10*time.Minute), true)
-	h.render(w, h.loginTemplate, http.StatusOK, map[string]any{"CSRF": csrf, "Transaction": transaction})
+	h.render(w, r, h.loginTemplate, http.StatusOK, map[string]any{"CSRF": csrf, "Transaction": transaction})
 }
 
 func (h *Handler) postLogin(w http.ResponseWriter, r *http.Request) {
@@ -202,13 +214,13 @@ func (h *Handler) postLogin(w http.ResponseWriter, r *http.Request) {
 	password := r.PostFormValue("password")
 	transaction := cleanTransaction(r.PostFormValue("transaction"))
 	if len(email) > 320 || len(password) > 1024 || email == "" || password == "" {
-		h.loginFailure(w, email, transaction)
+		h.loginFailure(w, r, email, transaction)
 		return
 	}
 	source := remoteHost(r.RemoteAddr)
 	if retry, allowed := h.throttle.allow(source, email); !allowed {
 		w.Header().Set("Retry-After", strconv.Itoa(max(1, int(retry.Seconds()))))
-		h.renderLoginError(w, http.StatusTooManyRequests, transaction)
+		h.renderLoginError(w, r, http.StatusTooManyRequests, transaction)
 		return
 	}
 	select {
@@ -216,13 +228,13 @@ func (h *Handler) postLogin(w http.ResponseWriter, r *http.Request) {
 		defer func() { <-h.passwordSlots }()
 	default:
 		w.Header().Set("Retry-After", "1")
-		h.renderLoginError(w, http.StatusTooManyRequests, transaction)
+		h.renderLoginError(w, r, http.StatusTooManyRequests, transaction)
 		return
 	}
 	user, err := h.backend.Authenticate(email, password)
 	if err != nil || !user.Enabled {
 		h.throttle.failure(source, email)
-		h.loginFailure(w, email, transaction)
+		h.loginFailure(w, r, email, transaction)
 		return
 	}
 	credentials, err := h.backend.CreateSession(user.ID, h.sessionTTL)
@@ -242,19 +254,19 @@ func (h *Handler) postLogin(w http.ResponseWriter, r *http.Request) {
 	h.redirectAfterLogin(w, r, transaction)
 }
 
-func (h *Handler) loginFailure(w http.ResponseWriter, email, transaction string) {
+func (h *Handler) loginFailure(w http.ResponseWriter, r *http.Request, email, transaction string) {
 	h.record(AuditEvent{Actor: email, Action: "login", Success: false, Reason: "invalid credentials"})
-	h.renderLoginError(w, http.StatusUnauthorized, transaction)
+	h.renderLoginError(w, r, http.StatusUnauthorized, transaction)
 }
 
-func (h *Handler) renderLoginError(w http.ResponseWriter, status int, transaction string) {
+func (h *Handler) renderLoginError(w http.ResponseWriter, r *http.Request, status int, transaction string) {
 	csrf, err := randomToken()
 	if err != nil {
 		h.serverError(w)
 		return
 	}
 	h.setCookie(w, LoginCSRFCookie, csrf, h.now().Add(10*time.Minute), true)
-	h.render(w, h.loginTemplate, status, map[string]any{"CSRF": csrf, "Transaction": transaction, "Error": "The email or password was not accepted."})
+	h.render(w, r, h.loginTemplate, status, map[string]any{"CSRF": csrf, "Transaction": transaction, "Error": "The email or password was not accepted."})
 }
 
 func (h *Handler) getPassword(w http.ResponseWriter, r *http.Request) {
@@ -262,7 +274,7 @@ func (h *Handler) getPassword(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	h.render(w, h.passwordTemplate, http.StatusOK, map[string]any{"CSRF": csrf, "Email": user.Email, "Transaction": cleanTransaction(r.URL.Query().Get("transaction"))})
+	h.render(w, r, h.passwordTemplate, http.StatusOK, map[string]any{"CSRF": csrf, "Email": user.Email, "Transaction": cleanTransaction(r.URL.Query().Get("transaction"))})
 	_ = token
 }
 
@@ -281,7 +293,7 @@ func (h *Handler) postPassword(w http.ResponseWriter, r *http.Request) {
 	current, next, confirm := r.PostFormValue("current_password"), r.PostFormValue("new_password"), r.PostFormValue("confirm_password")
 	transaction := cleanTransaction(r.PostFormValue("transaction"))
 	if next == "" || len(next) > 1024 || next != confirm || h.backend.ChangePassword(user.ID, current, next) != nil {
-		h.render(w, h.passwordTemplate, http.StatusBadRequest, map[string]any{"CSRF": csrf, "Email": user.Email, "Transaction": transaction, "Error": "The password could not be changed."})
+		h.render(w, r, h.passwordTemplate, http.StatusBadRequest, map[string]any{"CSRF": csrf, "Email": user.Email, "Transaction": transaction, "Error": "The password could not be changed."})
 		return
 	}
 	_ = h.backend.RevokeSession(token)
@@ -321,12 +333,31 @@ func (h *Handler) getUsers(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	h.renderAdmin(w, r, http.StatusOK, user, csrf, "", successMessage(r.URL.Query().Get("success")))
+}
+
+func (h *Handler) renderAdmin(w http.ResponseWriter, r *http.Request, status int, user User, csrf, message, success string) {
 	users, err := h.backend.ListUsers()
 	if err != nil {
 		h.serverError(w)
 		return
 	}
-	h.render(w, h.adminTemplate, http.StatusOK, map[string]any{"CSRF": csrf, "Actor": user, "Users": users})
+	h.render(w, r, h.adminTemplate, status, map[string]any{"CSRF": csrf, "Actor": user, "Users": users, "Error": message, "Success": success})
+}
+
+func successMessage(action string) string {
+	switch action {
+	case "user_create":
+		return "User created. You can create another account now."
+	case "user_update":
+		return "User access updated."
+	case "password_reset":
+		return "Temporary password set."
+	case "sessions_revoke":
+		return "Active sessions revoked."
+	default:
+		return ""
+	}
 }
 
 func (h *Handler) postCreateUser(w http.ResponseWriter, r *http.Request) {
@@ -389,16 +420,16 @@ func (h *Handler) adminMutation(w http.ResponseWriter, r *http.Request, action, 
 	// current password on every mutation instead of trusting session age alone.
 	if h.backend.VerifyPassword(actor.ID, r.PostFormValue("current_password")) != nil {
 		h.record(AuditEvent{Actor: actor.Email, Action: action, Target: target, Success: false, Reason: "recent password confirmation failed"})
-		h.forbidden(w)
+		h.renderAdmin(w, r, http.StatusForbidden, actor, csrf, "Your administrator password was not accepted. Enter the password for "+actor.Email+", not the new user's temporary password.", "")
 		return
 	}
 	if err := mutate(actor); err != nil {
 		h.record(AuditEvent{Actor: actor.Email, Action: action, Target: target, Success: false, Reason: "operation rejected"})
-		h.renderMessage(w, http.StatusBadRequest, "The requested account change was not applied.")
+		h.renderAdmin(w, r, http.StatusBadRequest, actor, csrf, "The account change was not applied. For a new user, use a unique valid email and a temporary password of at least 12 characters.", "")
 		return
 	}
 	h.record(AuditEvent{Actor: actor.Email, Action: action, Target: target, Success: true})
-	h.redirect(w, r, "/oauth/admin/users", "")
+	h.redirect(w, r, "/oauth/admin/users?success="+url.QueryEscape(action), "")
 }
 
 func (h *Handler) requireAdmin(w http.ResponseWriter, r *http.Request) (Session, User, string, string, bool) {
@@ -475,7 +506,14 @@ func (h *Handler) clearAuthCookies(w http.ResponseWriter) {
 	h.clearCookie(w, CSRFCookieName)
 }
 
-func (h *Handler) render(w http.ResponseWriter, page *template.Template, status int, data any) {
+func (h *Handler) render(w http.ResponseWriter, r *http.Request, page *template.Template, status int, data any) {
+	if values, ok := data.(map[string]any); ok {
+		// appCSS is a compile-time constant owned by this package, never user input.
+		values["CSS"] = template.CSS(appCSS)
+		if nonce, ok := r.Context().Value(styleNonceContextKey{}).(string); ok {
+			values["StyleNonce"] = nonce
+		}
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
 	if err := page.Execute(w, data); err != nil {
@@ -505,9 +543,9 @@ func (h *Handler) record(event AuditEvent) {
 	}
 }
 
-func setSecurityHeaders(w http.ResponseWriter) {
+func setSecurityHeaders(w http.ResponseWriter, styleNonce string) {
 	w.Header().Set("Cache-Control", "no-store")
-	w.Header().Set("Content-Security-Policy", "default-src 'none'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'nonce-"+styleNonce+"'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("X-Frame-Options", "DENY")

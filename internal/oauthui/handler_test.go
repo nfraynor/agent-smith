@@ -146,8 +146,29 @@ func TestLoginPageSetsDefensiveHeadersAndHostCookie(t *testing.T) {
 	if len(cookies) != 1 || cookies[0].Name != LoginCSRFCookie || !cookies[0].Secure || !cookies[0].HttpOnly || cookies[0].Domain != "" || cookies[0].Path != "/" {
 		t.Fatalf("unexpected login CSRF cookie: %#v", cookies)
 	}
-	if !strings.Contains(recorder.Body.String(), `value="abc_123"`) {
+	if !strings.Contains(recorder.Body.String(), `value='abc_123'`) {
 		t.Error("transaction handle was not preserved")
+	}
+}
+
+func TestOAuthStylesUsePerResponseCSPNonce(t *testing.T) {
+	handler := newHandler(t, newFakeBackend(permissions.RoleAdmin), nil)
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/oauth/login", nil))
+	csp, body := recorder.Header().Get("Content-Security-Policy"), recorder.Body.String()
+	prefix := "style-src 'nonce-"
+	start := strings.Index(csp, prefix)
+	end := -1
+	if start >= 0 {
+		end = strings.Index(csp[start+len(prefix):], "'")
+	}
+	if recorder.Code != http.StatusOK || start < 0 || end < 1 || !strings.Contains(body, "nonce='"+csp[start+len(prefix):start+len(prefix)+end]+"'") || !strings.Contains(body, ".admin-grid") || strings.Contains(body, "/oauth/assets/app.css") {
+		t.Fatalf("status=%d csp=%q body=%q", recorder.Code, csp, body)
+	}
+	second := httptest.NewRecorder()
+	handler.ServeHTTP(second, httptest.NewRequest(http.MethodGet, "/oauth/login", nil))
+	if second.Header().Get("Content-Security-Policy") == csp {
+		t.Fatal("style nonce was reused across responses")
 	}
 }
 
@@ -229,15 +250,32 @@ func TestAdminMutationRequiresAdminAndPasswordConfirmation(t *testing.T) {
 	denied := httptest.NewRecorder()
 	deniedRequest := authenticatedForm("/oauth/admin/users/user-2/update", credentials, url.Values{"csrf": {credentials.CSRFToken}, "current_password": {"wrong"}, "role": {"operator"}, "enabled": {"on"}})
 	handler.ServeHTTP(denied, deniedRequest)
-	if denied.Code != http.StatusForbidden || backend.updated != nil {
-		t.Fatalf("status=%d update=%#v", denied.Code, backend.updated)
+	if denied.Code != http.StatusForbidden || backend.updated != nil || !strings.Contains(denied.Body.String(), "administrator password was not accepted") || !strings.Contains(denied.Body.String(), "/oauth/admin/users/create") {
+		t.Fatalf("status=%d update=%#v body=%s", denied.Code, backend.updated, denied.Body.String())
 	}
 
 	allowed := httptest.NewRecorder()
 	allowedRequest := authenticatedForm("/oauth/admin/users/user-2/update", credentials, url.Values{"csrf": {credentials.CSRFToken}, "current_password": {backend.password}, "role": {"operator"}, "enabled": {"on"}})
 	handler.ServeHTTP(allowed, allowedRequest)
-	if allowed.Code != http.StatusSeeOther || backend.updated == nil || backend.updated.ID != "user-2" || backend.updated.Role != permissions.RoleOperator {
+	if allowed.Code != http.StatusSeeOther || allowed.Header().Get("Location") != "/oauth/admin/users?success=user_update" || backend.updated == nil || backend.updated.ID != "user-2" || backend.updated.Role != permissions.RoleOperator {
 		t.Fatalf("status=%d update=%#v", allowed.Code, backend.updated)
+	}
+}
+
+func TestAdminCanCreateMultipleUsersWithOwnPassword(t *testing.T) {
+	backend := newFakeBackend(permissions.RoleAdmin)
+	credentials, _ := backend.CreateSession("user-1", time.Hour)
+	handler := newHandler(t, backend, nil)
+	for _, email := range []string{"first@example.com", "second@example.com"} {
+		recorder := httptest.NewRecorder()
+		request := authenticatedForm("/oauth/admin/users/create", credentials, url.Values{"csrf": {credentials.CSRFToken}, "email": {email}, "new_password": {"temporary password"}, "current_password": {backend.password}, "role": {"viewer"}})
+		handler.ServeHTTP(recorder, request)
+		if recorder.Code != http.StatusSeeOther || recorder.Header().Get("Location") != "/oauth/admin/users?success=user_create" {
+			t.Fatalf("email=%s status=%d location=%q body=%s", email, recorder.Code, recorder.Header().Get("Location"), recorder.Body.String())
+		}
+	}
+	if len(backend.users) != 3 {
+		t.Fatalf("users=%d, want 3", len(backend.users))
 	}
 }
 
