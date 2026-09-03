@@ -143,7 +143,7 @@ func TestLoginPageSetsDefensiveHeadersAndHostCookie(t *testing.T) {
 		t.Error("missing restrictive CSP")
 	}
 	cookies := recorder.Result().Cookies()
-	if len(cookies) != 1 || cookies[0].Name != LoginCSRFCookie || !cookies[0].Secure || !cookies[0].HttpOnly || cookies[0].Domain != "" || cookies[0].Path != "/oauth" {
+	if len(cookies) != 1 || cookies[0].Name != LoginCSRFCookie || !cookies[0].Secure || !cookies[0].HttpOnly || cookies[0].Domain != "" || cookies[0].Path != "/" {
 		t.Fatalf("unexpected login CSRF cookie: %#v", cookies)
 	}
 	if !strings.Contains(recorder.Body.String(), `value="abc_123"`) {
@@ -184,7 +184,7 @@ func TestSuccessfulLoginRotatesSessionAndUsesInternalContinuation(t *testing.T) 
 			csrf = cookie
 		}
 	}
-	if session == nil || csrf == nil || session.Value == "attacker-fixed" || !session.HttpOnly || !csrf.HttpOnly || !session.Secure || session.SameSite != http.SameSiteLaxMode {
+	if session == nil || csrf == nil || session.Value == "attacker-fixed" || !session.HttpOnly || !csrf.HttpOnly || !session.Secure || session.Path != "/" || csrf.Path != "/" || session.SameSite != http.SameSiteLaxMode {
 		t.Fatalf("unexpected auth cookies: %#v", cookies)
 	}
 }

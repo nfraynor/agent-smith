@@ -461,11 +461,13 @@ func (h *Handler) redirect(w http.ResponseWriter, r *http.Request, path, transac
 }
 
 func (h *Handler) setCookie(w http.ResponseWriter, name, value string, expires time.Time, httpOnly bool) {
-	http.SetCookie(w, &http.Cookie{Name: name, Value: value, Path: "/oauth", Secure: true, HttpOnly: httpOnly, SameSite: http.SameSiteLaxMode, Expires: expires, MaxAge: max(1, int(expires.Sub(h.now()).Seconds()))})
+	// The __Host- prefix requires Secure, no Domain, and Path=/; browsers reject
+	// prefixed cookies that use a narrower path.
+	http.SetCookie(w, &http.Cookie{Name: name, Value: value, Path: "/", Secure: true, HttpOnly: httpOnly, SameSite: http.SameSiteLaxMode, Expires: expires, MaxAge: max(1, int(expires.Sub(h.now()).Seconds()))})
 }
 
 func (h *Handler) clearCookie(w http.ResponseWriter, name string) {
-	http.SetCookie(w, &http.Cookie{Name: name, Path: "/oauth", Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: -1, Expires: time.Unix(1, 0)})
+	http.SetCookie(w, &http.Cookie{Name: name, Path: "/", Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: -1, Expires: time.Unix(1, 0)})
 }
 
 func (h *Handler) clearAuthCookies(w http.ResponseWriter) {
