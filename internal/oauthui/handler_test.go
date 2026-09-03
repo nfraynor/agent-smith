@@ -242,6 +242,32 @@ func TestPasswordChangeRequiresStoredCSRFAndRotatesSession(t *testing.T) {
 	}
 }
 
+func TestNonAdminPasswordChangeLandsOnAccountPage(t *testing.T) {
+	backend := newFakeBackend(permissions.RoleViewer)
+	credentials, _ := backend.CreateSession("user-1", time.Hour)
+	handler := newHandler(t, backend, nil)
+	recorder := httptest.NewRecorder()
+	request := authenticatedForm("/oauth/account/password", credentials, url.Values{"csrf": {credentials.CSRFToken}, "current_password": {backend.password}, "new_password": {"new correct horse battery"}, "confirm_password": {"new correct horse battery"}})
+	handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusSeeOther || recorder.Header().Get("Location") != "/oauth/account" || !backend.passwordChanged {
+		t.Fatalf("status=%d location=%q changed=%v", recorder.Code, recorder.Header().Get("Location"), backend.passwordChanged)
+	}
+}
+
+func TestAccountPageIsAvailableToNonAdmin(t *testing.T) {
+	backend := newFakeBackend(permissions.RoleViewer)
+	credentials, _ := backend.CreateSession("user-1", time.Hour)
+	handler := newHandler(t, backend, nil)
+	request := httptest.NewRequest(http.MethodGet, "/oauth/account", nil)
+	request.AddCookie(&http.Cookie{Name: SessionCookieName, Value: credentials.Token})
+	request.AddCookie(&http.Cookie{Name: CSRFCookieName, Value: credentials.CSRFToken})
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), "You're signed in") || !strings.Contains(recorder.Body.String(), backend.users[0].Email) {
+		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+}
+
 func TestAdminMutationRequiresAdminAndPasswordConfirmation(t *testing.T) {
 	backend := newFakeBackend(permissions.RoleAdmin)
 	credentials, _ := backend.CreateSession("user-1", time.Hour)

@@ -53,7 +53,7 @@ plaintext HTTP on the public internet.
 | `GET /mcp/ready` | OAuth access token | Docker-backed readiness |
 | `GET /.well-known/*` | None | MCP/OAuth discovery metadata |
 | `/oauth/*` | OAuth flow | Registration, authorization, token and revocation |
-| `/oauth/login`, `/oauth/account/*` | Local browser session | Sign-in and password change |
+| `/oauth/login`, `/oauth/account`, `/oauth/account/*` | Local browser session | Sign-in and account management |
 | `/oauth/admin/*` | Local admin session | User, role, password and session administration |
 
 Clients connect to `https://remoteops.example/mcp`. RemoteOps advertises its embedded

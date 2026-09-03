@@ -116,6 +116,7 @@ type Handler struct {
 	throttle         *loginThrottle
 	mux              *http.ServeMux
 	loginTemplate    *template.Template
+	accountTemplate  *template.Template
 	passwordTemplate *template.Template
 	adminTemplate    *template.Template
 }
@@ -155,6 +156,7 @@ func New(options Options) (*Handler, error) {
 		passwordSlots:    make(chan struct{}, options.PasswordWorkers),
 		throttle:         newLoginThrottle(options.Now, options.LoginAttempts, options.LoginSourceAttempts, options.LoginWindow),
 		loginTemplate:    template.Must(template.New("login").Parse(strings.Replace(enhancedLoginPage, "<link rel='stylesheet' href='/oauth/assets/app.css'>", "<style nonce='{{.StyleNonce}}'>{{.CSS}}</style>", 1))),
+		accountTemplate:  template.Must(template.New("account").Parse(strings.Replace(enhancedAccountPage, "<link rel='stylesheet' href='/oauth/assets/app.css'>", "<style nonce='{{.StyleNonce}}'>{{.CSS}}</style>", 1))),
 		passwordTemplate: template.Must(template.New("password").Parse(strings.Replace(enhancedPasswordPage, "<link rel='stylesheet' href='/oauth/assets/app.css'>", "<style nonce='{{.StyleNonce}}'>{{.CSS}}</style>", 1))),
 		adminTemplate: template.Must(template.New("admin").Funcs(template.FuncMap{
 			"isViewer":   func(role permissions.Role) bool { return role == permissions.RoleViewer },
@@ -166,6 +168,7 @@ func New(options Options) (*Handler, error) {
 	mux.HandleFunc("GET /oauth/login", h.getLogin)
 	mux.HandleFunc("POST /oauth/login", h.postLogin)
 	mux.HandleFunc("POST /oauth/logout", h.postLogout)
+	mux.HandleFunc("GET /oauth/account", h.getAccount)
 	mux.HandleFunc("GET /oauth/account/password", h.getPassword)
 	mux.HandleFunc("POST /oauth/account/password", h.postPassword)
 	mux.HandleFunc("GET /oauth/admin/users", h.getUsers)
@@ -251,7 +254,7 @@ func (h *Handler) postLogin(w http.ResponseWriter, r *http.Request) {
 		h.redirect(w, r, "/oauth/account/password", transaction)
 		return
 	}
-	h.redirectAfterLogin(w, r, transaction)
+	h.redirectAfterLogin(w, r, user, transaction)
 }
 
 func (h *Handler) loginFailure(w http.ResponseWriter, r *http.Request, email, transaction string) {
@@ -267,6 +270,14 @@ func (h *Handler) renderLoginError(w http.ResponseWriter, r *http.Request, statu
 	}
 	h.setCookie(w, LoginCSRFCookie, csrf, h.now().Add(10*time.Minute), true)
 	h.render(w, r, h.loginTemplate, status, map[string]any{"CSRF": csrf, "Transaction": transaction, "Error": "The email or password was not accepted."})
+}
+
+func (h *Handler) getAccount(w http.ResponseWriter, r *http.Request) {
+	_, user, _, csrf, ok := h.requireSession(w, r)
+	if !ok {
+		return
+	}
+	h.render(w, r, h.accountTemplate, http.StatusOK, map[string]any{"CSRF": csrf, "User": user})
 }
 
 func (h *Handler) getPassword(w http.ResponseWriter, r *http.Request) {
@@ -306,7 +317,7 @@ func (h *Handler) postPassword(w http.ResponseWriter, r *http.Request) {
 	h.setCookie(w, SessionCookieName, credentials.Token, credentials.ExpiresAt, true)
 	h.setCookie(w, CSRFCookieName, credentials.CSRFToken, credentials.ExpiresAt, true)
 	h.record(AuditEvent{Actor: user.Email, Action: "password_change", Target: user.ID, Success: true})
-	h.redirectAfterLogin(w, r, transaction)
+	h.redirectAfterLogin(w, r, user, transaction)
 }
 
 func (h *Handler) postLogout(w http.ResponseWriter, r *http.Request) {
@@ -476,12 +487,16 @@ func (h *Handler) prepareForm(w http.ResponseWriter, r *http.Request) bool {
 
 func (h *Handler) validOrigin(r *http.Request) bool { return r.Header.Get("Origin") == h.origin }
 
-func (h *Handler) redirectAfterLogin(w http.ResponseWriter, r *http.Request, transaction string) {
+func (h *Handler) redirectAfterLogin(w http.ResponseWriter, r *http.Request, user User, transaction string) {
 	if transaction != "" {
 		h.redirect(w, r, "/oauth/authorize", transaction)
 		return
 	}
-	h.redirect(w, r, "/oauth/admin/users", "")
+	if user.Role == permissions.RoleAdmin {
+		h.redirect(w, r, "/oauth/admin/users", "")
+		return
+	}
+	h.redirect(w, r, "/oauth/account", "")
 }
 
 func (h *Handler) redirect(w http.ResponseWriter, r *http.Request, path, transaction string) {
