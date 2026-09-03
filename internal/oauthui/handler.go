@@ -523,8 +523,8 @@ func (h *Handler) clearAuthCookies(w http.ResponseWriter) {
 
 func (h *Handler) render(w http.ResponseWriter, r *http.Request, page *template.Template, status int, data any) {
 	if values, ok := data.(map[string]any); ok {
-		// appCSS is a compile-time constant owned by this package, never user input.
-		values["CSS"] = template.CSS(appCSS)
+		// PageCSS is a compile-time constant owned by this package, never user input.
+		values["CSS"] = template.CSS(PageCSS)
 		if nonce, ok := r.Context().Value(styleNonceContextKey{}).(string); ok {
 			values["StyleNonce"] = nonce
 		}

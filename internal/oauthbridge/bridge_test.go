@@ -50,6 +50,52 @@ func TestAuthorizationLoginTransactionDoesNotExposeRequest(t *testing.T) {
 	}
 }
 
+func TestConsentPageUsesSharedDesignAndNonce(t *testing.T) {
+	store, err := localoauth.Open(localoauth.Options{Path: t.TempDir() + "/oauth.db"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	user, _, err := store.Bootstrap("admin@example.com", "correct horse battery staple", permissions.RoleAdmin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	changed := false
+	if _, err = store.UpdateUser(user.ID, localoauth.UserUpdate{MustChangePassword: &changed}); err != nil {
+		t.Fatal(err)
+	}
+	client, err := store.RegisterClient(localoauth.ClientRegistration{Name: "Cool <Client>", RedirectURIs: []string{"https://client.example/callback"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	bridge, _ := New(store, "https://remoteops.example", "https://remoteops.example/mcp")
+	input := oauthserver.AuthorizationRequest{ClientID: client.ID, RedirectURI: client.RedirectURIs[0], Resource: bridge.Resource, CodeChallenge: strings.Repeat("a", 43), Scopes: []string{"mcp", "offline_access"}}
+	decision, err := bridge.Authorize(t.Context(), httptest.NewRequest(http.MethodGet, bridge.Issuer+"/oauth/authorize", nil), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	loginURL, _ := url.Parse(decision.LoginURL)
+	transaction := loginURL.Query().Get("transaction")
+	credentials, err := bridge.CreateSession(user.ID, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodGet, bridge.Issuer+"/oauth/consent?transaction="+url.QueryEscape(transaction), nil)
+	request.AddCookie(&http.Cookie{Name: oauthui.SessionCookieName, Value: credentials.Token})
+	request.AddCookie(&http.Cookie{Name: oauthui.CSRFCookieName, Value: credentials.CSRFToken})
+	response := httptest.NewRecorder()
+	bridge.ConsentHandler().ServeHTTP(response, request)
+	body, csp := response.Body.String(), response.Header().Get("Content-Security-Policy")
+	for _, want := range []string{"Connection request", "Cool &lt;Client&gt;", "Use RemoteOps tools", "Stay connected", "Authorize connection", "name='transaction' value='" + transaction + "'"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("consent page missing %q", want)
+		}
+	}
+	if response.Code != http.StatusOK || strings.Contains(body, "Cool <Client>") || !strings.Contains(csp, "style-src 'nonce-") || !strings.Contains(body, "<style nonce=") {
+		t.Fatalf("status=%d csp=%q body=%s", response.Code, csp, body)
+	}
+}
+
 func TestAuthenticatedBrowserAndAccessTokenMapToSameUser(t *testing.T) {
 	now := time.Now().UTC()
 	store, err := localoauth.Open(localoauth.Options{Path: t.TempDir() + "/oauth.db", Now: func() time.Time { return now }})

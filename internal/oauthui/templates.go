@@ -1,6 +1,9 @@
 package oauthui
 
-const appCSS = cssBase + cssAdmin + cssAccount
+// FoundationCSS contains the shared visual foundation for browser-facing OAuth pages.
+const FoundationCSS = cssBase
+
+const PageCSS = FoundationCSS + cssAdmin + cssAccount
 
 const cssAccount = `.account-meta{margin:24px 0;padding:16px;border:1px solid var(--line);border-radius:12px;background:#091725}.account-meta strong{display:block}.account-actions{display:grid;gap:12px}.button-link{display:block;border-radius:11px;padding:11px 16px;background:var(--accent);color:#05120f;font-weight:800;text-align:center;text-decoration:none}`
 

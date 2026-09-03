@@ -1,7 +1,9 @@
 package oauthbridge
 
 import (
+	"crypto/rand"
 	"crypto/subtle"
+	"encoding/base64"
 	"html/template"
 	"net/http"
 	"net/url"
@@ -11,19 +13,18 @@ import (
 	"github.com/nfraynor/agent-smith/internal/oauthui"
 )
 
-var consentTemplate = template.Must(template.New("consent").Parse(`<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Authorize RemoteOps</title></head>
-<body><main><h1>Authorize RemoteOps access</h1><p><strong>{{.Client}}</strong> is requesting access to the RemoteOps MCP server as <strong>{{.Email}}</strong>.</p>
-<p>Your RemoteOps role remains {{.Role}}. OAuth cannot increase it or enable God Mode.</p>
-<form method="post" action="/oauth/consent"><input type="hidden" name="transaction" value="{{.Transaction}}"><input type="hidden" name="csrf" value="{{.CSRF}}"><button name="decision" value="approve">Authorize</button><button name="decision" value="deny">Deny</button></form>
-</main></body></html>`))
-
 func (b *Bridge) ConsentHandler() http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		setConsentHeaders(writer)
+		nonce, err := consentNonce()
+		if err != nil {
+			setConsentHeaders(writer, "")
+			http.Error(writer, "The request could not be completed.", http.StatusInternalServerError)
+			return
+		}
+		setConsentHeaders(writer, nonce)
 		switch request.Method {
 		case http.MethodGet:
-			b.getConsent(writer, request)
+			b.getConsent(writer, request, nonce)
 		case http.MethodPost:
 			b.postConsent(writer, request)
 		default:
@@ -33,7 +34,7 @@ func (b *Bridge) ConsentHandler() http.Handler {
 	})
 }
 
-func (b *Bridge) getConsent(writer http.ResponseWriter, request *http.Request) {
+func (b *Bridge) getConsent(writer http.ResponseWriter, request *http.Request, styleNonce string) {
 	transaction := request.URL.Query().Get("transaction")
 	pending, ok := b.pendingTransaction(transaction)
 	if !ok {
@@ -55,7 +56,11 @@ func (b *Bridge) getConsent(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_ = consentTemplate.Execute(writer, map[string]any{"Client": client.Name, "Email": user.Email, "Role": user.Role, "Transaction": transaction, "CSRF": csrfCookie.Value})
+	_ = consentTemplate.Execute(writer, map[string]any{
+		"CSS": template.CSS(oauthui.FoundationCSS + consentCSS), "StyleNonce": styleNonce,
+		"Client": client.Name, "ClientInitial": clientInitial(client.Name), "Email": user.Email, "Role": user.Role,
+		"Permissions": consentPermissions(pending.Request.Scopes), "Transaction": transaction, "CSRF": csrfCookie.Value,
+	})
 }
 
 func (b *Bridge) postConsent(writer http.ResponseWriter, request *http.Request) {
@@ -126,13 +131,47 @@ func (b *Bridge) pendingTransaction(token string) (pendingAuthorization, bool) {
 	return pending, ok
 }
 
-func setConsentHeaders(writer http.ResponseWriter) {
+func setConsentHeaders(writer http.ResponseWriter, styleNonce string) {
 	writer.Header().Set("Cache-Control", "no-store")
 	writer.Header().Set("Pragma", "no-cache")
-	writer.Header().Set("Content-Security-Policy", "default-src 'none'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
+	writer.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'nonce-"+styleNonce+"'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
 	writer.Header().Set("Referrer-Policy", "no-referrer")
 	writer.Header().Set("X-Content-Type-Options", "nosniff")
 	writer.Header().Set("X-Frame-Options", "DENY")
+}
+
+type consentPermission struct {
+	Title       string
+	Description string
+}
+
+func consentPermissions(scopes []string) []consentPermission {
+	permissions := make([]consentPermission, 0, len(scopes))
+	for _, scope := range scopes {
+		switch scope {
+		case "mcp":
+			permissions = append(permissions, consentPermission{Title: "Use RemoteOps tools", Description: "Perform only the operations allowed by your RemoteOps role."})
+		case "offline_access":
+			permissions = append(permissions, consentPermission{Title: "Stay connected", Description: "Refresh access securely without asking you to sign in every time."})
+		}
+	}
+	return permissions
+}
+
+func clientInitial(name string) string {
+	runes := []rune(strings.TrimSpace(name))
+	if len(runes) == 0 {
+		return "?"
+	}
+	return strings.ToUpper(string(runes[0]))
+}
+
+func consentNonce() (string, error) {
+	value := make([]byte, 32)
+	if _, err := rand.Read(value); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(value), nil
 }
 
 func sameConsentToken(left, right string) bool {
