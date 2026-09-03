@@ -17,16 +17,16 @@ func (b *Bridge) ConsentHandler() http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		nonce, err := consentNonce()
 		if err != nil {
-			setConsentHeaders(writer, "")
+			setConsentHeaders(writer, "", "")
 			http.Error(writer, "The request could not be completed.", http.StatusInternalServerError)
 			return
 		}
-		setConsentHeaders(writer, nonce)
+		setConsentHeaders(writer, nonce, "")
 		switch request.Method {
 		case http.MethodGet:
 			b.getConsent(writer, request, nonce)
 		case http.MethodPost:
-			b.postConsent(writer, request)
+			b.postConsent(writer, request, nonce)
 		default:
 			writer.Header().Set("Allow", "GET, POST")
 			http.Error(writer, "Method not allowed.", http.StatusMethodNotAllowed)
@@ -41,6 +41,7 @@ func (b *Bridge) getConsent(writer http.ResponseWriter, request *http.Request, s
 		http.Error(writer, "Authorization transaction is invalid or expired.", http.StatusBadRequest)
 		return
 	}
+	setConsentHeaders(writer, styleNonce, pending.Request.RedirectURI)
 	sessionCookie, user, ok := b.consentUser(writer, request, transaction)
 	if !ok {
 		return
@@ -63,7 +64,7 @@ func (b *Bridge) getConsent(writer http.ResponseWriter, request *http.Request, s
 	})
 }
 
-func (b *Bridge) postConsent(writer http.ResponseWriter, request *http.Request) {
+func (b *Bridge) postConsent(writer http.ResponseWriter, request *http.Request, styleNonce string) {
 	if request.Header.Get("Origin") != b.Issuer || !strings.HasPrefix(strings.ToLower(request.Header.Get("Content-Type")), "application/x-www-form-urlencoded") {
 		http.Error(writer, "The request could not be accepted.", http.StatusBadRequest)
 		return
@@ -74,10 +75,12 @@ func (b *Bridge) postConsent(writer http.ResponseWriter, request *http.Request) 
 		return
 	}
 	transaction := request.PostForm.Get("transaction")
-	if _, ok := b.pendingTransaction(transaction); !ok {
+	pending, ok := b.pendingTransaction(transaction)
+	if !ok {
 		http.Error(writer, "Authorization transaction is invalid or expired.", http.StatusBadRequest)
 		return
 	}
+	setConsentHeaders(writer, styleNonce, pending.Request.RedirectURI)
 	sessionCookie, user, ok := b.consentUser(writer, request, transaction)
 	if !ok {
 		return
@@ -131,13 +134,25 @@ func (b *Bridge) pendingTransaction(token string) (pendingAuthorization, bool) {
 	return pending, ok
 }
 
-func setConsentHeaders(writer http.ResponseWriter, styleNonce string) {
+func setConsentHeaders(writer http.ResponseWriter, styleNonce, redirectURI string) {
+	formAction := "'self'"
+	if source := consentFormActionSource(redirectURI); source != "" {
+		formAction += " " + source
+	}
 	writer.Header().Set("Cache-Control", "no-store")
 	writer.Header().Set("Pragma", "no-cache")
-	writer.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'nonce-"+styleNonce+"'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
+	writer.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'nonce-"+styleNonce+"'; form-action "+formAction+"; base-uri 'none'; frame-ancestors 'none'")
 	writer.Header().Set("Referrer-Policy", "no-referrer")
 	writer.Header().Set("X-Content-Type-Options", "nosniff")
 	writer.Header().Set("X-Frame-Options", "DENY")
+}
+
+func consentFormActionSource(redirectURI string) string {
+	callback, err := url.Parse(redirectURI)
+	if err != nil || callback.Scheme != "https" || callback.Host == "" || callback.User != nil {
+		return ""
+	}
+	return callback.Scheme + "://" + callback.Host
 }
 
 type consentPermission struct {

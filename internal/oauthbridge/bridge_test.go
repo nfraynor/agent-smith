@@ -91,8 +91,31 @@ func TestConsentPageUsesSharedDesignAndNonce(t *testing.T) {
 			t.Errorf("consent page missing %q", want)
 		}
 	}
-	if response.Code != http.StatusOK || strings.Contains(body, "Cool <Client>") || !strings.Contains(csp, "style-src 'nonce-") || !strings.Contains(body, "<style nonce=") {
+	if response.Code != http.StatusOK || strings.Contains(body, "Cool <Client>") || !strings.Contains(csp, "style-src 'nonce-") || !strings.Contains(csp, "form-action 'self' https://client.example;") || !strings.Contains(body, "<style nonce=") {
 		t.Fatalf("status=%d csp=%q body=%s", response.Code, csp, body)
+	}
+
+	form := url.Values{"transaction": {transaction}, "csrf": {credentials.CSRFToken}, "decision": {"approve"}}
+	request = httptest.NewRequest(http.MethodPost, bridge.Issuer+"/oauth/consent", strings.NewReader(form.Encode()))
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	request.Header.Set("Origin", bridge.Issuer)
+	request.AddCookie(&http.Cookie{Name: oauthui.SessionCookieName, Value: credentials.Token})
+	request.AddCookie(&http.Cookie{Name: oauthui.CSRFCookieName, Value: credentials.CSRFToken})
+	response = httptest.NewRecorder()
+	bridge.ConsentHandler().ServeHTTP(response, request)
+	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/oauth/authorize?transaction="+url.QueryEscape(transaction) || !strings.Contains(response.Header().Get("Content-Security-Policy"), "form-action 'self' https://client.example;") {
+		t.Fatalf("approval status=%d location=%q csp=%q", response.Code, response.Header().Get("Location"), response.Header().Get("Content-Security-Policy"))
+	}
+}
+
+func TestConsentFormActionSourceRejectsUnsafeCallbacks(t *testing.T) {
+	for _, callback := range []string{"", "http://client.example/callback", "https://user@client.example/callback", "://invalid"} {
+		if source := consentFormActionSource(callback); source != "" {
+			t.Errorf("consentFormActionSource(%q) = %q", callback, source)
+		}
+	}
+	if source := consentFormActionSource("https://client.example:8443/callback?existing=value"); source != "https://client.example:8443" {
+		t.Fatalf("callback source = %q", source)
 	}
 }
 
