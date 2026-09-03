@@ -2,7 +2,7 @@
 
 ## Security model
 
-RemoteOps is a highly sensitive administrative endpoint. Never publish its plain HTTP
+Agent Smith is a highly sensitive administrative endpoint. Never publish its plain HTTP
 port directly to the internet. Bind it to a private interface and place an
 authenticated, rate-limited TLS reverse proxy in front of it.
 
@@ -13,7 +13,7 @@ rollback. It does not turn the Docker socket into a security sandbox.
 
 `docker-compose.godmode.yml` is intentionally unrestricted. It uses privileged mode,
 the host PID namespace, the Docker socket, and a host-root mount. When and only when
-`REMOTEOPS_GODMODE=true` at startup, RemoteOps registers `godmode_shell`, which can
+`REMOTEOPS_GODMODE=true` at startup, Agent Smith registers `godmode_shell`, which can
 alter or destroy the host, install software, change networking, stop services, or
 reboot the machine. The flag cannot be changed through MCP. Treat any credential able
 to reach that deployment as a host-root credential.
@@ -27,7 +27,7 @@ to reach that deployment as a host-root credential.
   must be random and must not be shared among interactive users.
 - Terminate TLS at a trusted reverse proxy and restrict source networks.
 - Keep the default Viewer role unless mutation access is deliberately required.
-- Mount only the directories and Compose projects RemoteOps must manage.
+- Mount only the directories and Compose projects Agent Smith must manage.
 - Protect `/data`; it contains password hashes, grants, configuration backups, and
   operational history. Run one replica with the embedded database.
 - Review JSON audit records and revoke sessions after suspected exposure.

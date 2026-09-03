@@ -250,7 +250,7 @@ func (s *Server) bearerChallenge() string {
 	return `Bearer realm="remoteops", resource_metadata="` + metadata + `"`
 }
 
-// WriteBearerError preserves RemoteOps' resource error body while publishing OAuth discovery.
+// WriteBearerError preserves Agent Smith's resource error body while publishing OAuth discovery.
 func (s *Server) WriteBearerError(w http.ResponseWriter, errorCode, description string) {
 	w.Header().Set("WWW-Authenticate", s.bearerChallenge())
 	s.oauthError(w, http.StatusUnauthorized, errorCode, description)

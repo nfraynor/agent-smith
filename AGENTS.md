@@ -14,7 +14,7 @@ later; the closest file to the code being changed takes precedence.
 
 ## Repository state
 
-RemoteOps is a Go 1.25 service built and verified through Docker. Do not require a
+Agent Smith is a Go 1.25 service built and verified through Docker. Do not require a
 host Go installation.
 
 ## Canonical commands

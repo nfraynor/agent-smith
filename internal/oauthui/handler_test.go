@@ -149,6 +149,10 @@ func TestLoginPageSetsDefensiveHeadersAndHostCookie(t *testing.T) {
 	if !strings.Contains(recorder.Body.String(), `value='abc_123'`) {
 		t.Error("transaction handle was not preserved")
 	}
+	body := recorder.Body.String()
+	if !strings.Contains(body, "Agent Smith") || strings.Contains(body, "RemoteOps") {
+		t.Fatalf("unexpected product branding: %s", body)
+	}
 }
 
 func TestOAuthStylesUsePerResponseCSPNonce(t *testing.T) {
@@ -254,17 +258,31 @@ func TestNonAdminPasswordChangeLandsOnAccountPage(t *testing.T) {
 	}
 }
 
-func TestAccountPageIsAvailableToNonAdmin(t *testing.T) {
-	backend := newFakeBackend(permissions.RoleViewer)
-	credentials, _ := backend.CreateSession("user-1", time.Hour)
-	handler := newHandler(t, backend, nil)
-	request := httptest.NewRequest(http.MethodGet, "/oauth/account", nil)
-	request.AddCookie(&http.Cookie{Name: SessionCookieName, Value: credentials.Token})
-	request.AddCookie(&http.Cookie{Name: CSRFCookieName, Value: credentials.CSRFToken})
-	recorder := httptest.NewRecorder()
-	handler.ServeHTTP(recorder, request)
-	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), "You're signed in") || !strings.Contains(recorder.Body.String(), backend.users[0].Email) {
-		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+func TestAccountPageShowsCapabilitiesForRole(t *testing.T) {
+	tests := []struct {
+		name      string
+		role      permissions.Role
+		want      string
+		doNotWant string
+	}{
+		{name: "viewer", role: permissions.RoleViewer, want: "Inspect Docker containers", doNotWant: "deploy configured services"},
+		{name: "operator", role: permissions.RoleOperator, want: "deploy configured services", doNotWant: "Reveal secrets"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			backend := newFakeBackend(test.role)
+			credentials, _ := backend.CreateSession("user-1", time.Hour)
+			handler := newHandler(t, backend, nil)
+			request := httptest.NewRequest(http.MethodGet, "/oauth/account", nil)
+			request.AddCookie(&http.Cookie{Name: SessionCookieName, Value: credentials.Token})
+			request.AddCookie(&http.Cookie{Name: CSRFCookieName, Value: credentials.CSRFToken})
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, request)
+			body := recorder.Body.String()
+			if recorder.Code != http.StatusOK || !strings.Contains(body, "You're signed in") || !strings.Contains(body, backend.users[0].Email) || !strings.Contains(body, "Agent Smith") || strings.Contains(body, "RemoteOps") || !strings.Contains(body, "What you can do") || !strings.Contains(body, test.want) || strings.Contains(body, test.doNotWant) {
+				t.Fatalf("status=%d body=%s", recorder.Code, body)
+			}
+		})
 	}
 }
 
@@ -329,7 +347,7 @@ func TestAdminPageEscapesAccountData(t *testing.T) {
 	request.AddCookie(&http.Cookie{Name: CSRFCookieName, Value: credentials.CSRFToken})
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, request)
-	if recorder.Code != http.StatusOK || strings.Contains(recorder.Body.String(), "<script>") || !strings.Contains(recorder.Body.String(), "&lt;script&gt;") {
+	if recorder.Code != http.StatusOK || strings.Contains(recorder.Body.String(), "<script>") || !strings.Contains(recorder.Body.String(), "&lt;script&gt;") || !strings.Contains(recorder.Body.String(), "Agent Smith") || strings.Contains(recorder.Body.String(), "RemoteOps") {
 		t.Fatalf("unsafe output: %s", recorder.Body.String())
 	}
 }

@@ -12,6 +12,16 @@ import (
 	"github.com/nfraynor/agent-smith/internal/permissions"
 )
 
+func TestDefaultProductName(t *testing.T) {
+	server, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if server.opts.Name != "agent-smith" {
+		t.Fatalf("default MCP server name = %q, want agent-smith", server.opts.Name)
+	}
+}
+
 func TestGodModeToolRegistrationIsDynamic(t *testing.T) {
 	disabled, err := New(Options{})
 	if err != nil {

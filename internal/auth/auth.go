@@ -1,4 +1,4 @@
-// Package auth authenticates RemoteOps requests and carries identity in context.
+// Package auth authenticates Agent Smith requests and carries identity in context.
 package auth
 
 import (

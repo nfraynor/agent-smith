@@ -1,5 +1,5 @@
 // Package oauthbridge adapts the durable local OAuth store to the protocol,
-// browser UI, and RemoteOps authentication boundaries.
+// browser UI, and Agent Smith authentication boundaries.
 package oauthbridge
 
 import (
@@ -227,7 +227,7 @@ func randomToken() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(data), nil
 }
 
-// AccessAuthenticator implements RemoteOps' bearer authentication boundary.
+// AccessAuthenticator implements Agent Smith's bearer authentication boundary.
 type AccessAuthenticator struct{ Bridge *Bridge }
 
 func (a AccessAuthenticator) Authenticate(_ context.Context, credential string) (auth.Identity, error) {

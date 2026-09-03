@@ -166,7 +166,7 @@ func main() {
 	if cfg.GodMode {
 		logger.Warn("GOD MODE ENABLED: unrestricted host administration is available")
 	}
-	logger.Info("RemoteOps MCP listening", "address", cfg.Server.Listen, "version", version, "authMode", cfg.Auth.Mode, "godMode", cfg.GodMode)
+	logger.Info("Agent Smith MCP listening", "address", cfg.Server.Listen, "version", version, "authMode", cfg.Auth.Mode, "godMode", cfg.GodMode)
 	if err = server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		logger.Error("HTTP server failed", "error", err)
 		os.Exit(1)

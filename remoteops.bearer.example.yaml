@@ -1,5 +1,5 @@
 server:
-  name: remoteops
+  name: agent-smith
   listen: ":8080"
 
 auth:

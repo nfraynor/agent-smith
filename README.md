@@ -1,9 +1,13 @@
-# RemoteOps MCP
+# Agent Smith MCP
 
-RemoteOps is a containerized Model Context Protocol server for inspecting,
+Agent Smith is a containerized Model Context Protocol server for inspecting,
 diagnosing, configuring, deploying, and recovering Docker-based applications on one
 Linux host. It exposes structured operations instead of making an arbitrary shell the
 normal interface.
+
+The existing `remoteops` filenames, `REMOTEOPS_*` environment variables,
+container resources, cookie names, and `remoteops_info` tool name remain stable
+compatibility identifiers for existing deployments.
 
 > Observe → reason → bounded action → verify → audit → rollback where practical.
 
@@ -41,7 +45,7 @@ docker compose -f docker-compose.safe.yml up -d
 ```
 
 Put a TLS reverse proxy such as HAProxy, Caddy, nginx, or Traefik in front of the
-service. Forward `/mcp`, `/mcp/*`, `/.well-known/*`, `/oauth/*`, and `/health` without rewriting paths. Do not publish RemoteOps as
+service. Forward `/mcp`, `/mcp/*`, `/.well-known/*`, `/oauth/*`, and `/health` without rewriting paths. Do not publish Agent Smith as
 plaintext HTTP on the public internet.
 
 ## Endpoints and authentication
@@ -56,7 +60,7 @@ plaintext HTTP on the public internet.
 | `/oauth/login`, `/oauth/account`, `/oauth/account/*` | Local browser session | Sign-in and account management |
 | `/oauth/admin/*` | Local admin session | User, role, password and session administration |
 
-Clients connect to `https://remoteops.example/mcp`. RemoteOps advertises its embedded
+Clients connect to `https://remoteops.example/mcp`. Agent Smith advertises its embedded
 OAuth server, dynamically registers an allowlisted public client, and shows the local
 login page. Access tokens are short-lived and audience-bound; refresh tokens rotate
 and are revoked as a family on replay. Credentials are stored only as hashes.
@@ -72,7 +76,7 @@ is not recommended for interactive ChatGPT/Claude users.
 
 ## Configuration
 
-RemoteOps strictly parses `/config/remoteops.yaml`; unknown keys and invalid values
+Agent Smith strictly parses `/config/remoteops.yaml`; unknown keys and invalid values
 stop startup. Secrets come from environment variables. `REMOTEOPS_CONFIG` can select a
 different in-container path.
 
@@ -134,7 +138,7 @@ record SHA-256 before/after hashes and backups under:
 ```
 
 Rollback succeeds only when the current target still matches the recorded after hash.
-If another modification produced state C after RemoteOps changed A to B, rollback
+If another modification produced state C after Agent Smith changed A to B, rollback
 returns `ROLLBACK_CONFLICT`. Only an admin can explicitly force it. Audit events are
 append-only JSON lines in `/data/audit.jsonl` and include denied and failed actions.
 
@@ -145,7 +149,7 @@ previous image in its result, pulls, recreates, waits for the expected service,
 verifies health, and returns recent bounded logs on failure. Health checks prefer
 Docker HEALTHCHECK, followed by configured HTTP/TCP probes, then running state.
 If an image is supplied, it must exactly match the image configured for that Compose
-service; RemoteOps does not rewrite Compose files implicitly.
+service; Agent Smith does not rewrite Compose files implicitly.
 
 ## God Mode
 

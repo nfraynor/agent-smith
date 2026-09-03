@@ -1,4 +1,4 @@
-// Package config loads and strictly validates RemoteOps startup configuration.
+// Package config loads and strictly validates Agent Smith startup configuration.
 package config
 
 import (

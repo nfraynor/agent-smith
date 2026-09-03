@@ -1,4 +1,4 @@
-// Package mcpserver exposes RemoteOps domain services through authenticated MCP tools.
+// Package mcpserver exposes Agent Smith domain services through authenticated MCP tools.
 package mcpserver
 
 import (
@@ -59,7 +59,7 @@ type Server struct {
 
 func New(options Options) (*Server, error) {
 	if options.Name == "" {
-		options.Name = "remoteops"
+		options.Name = "agent-smith"
 	}
 	if options.Version == "" {
 		options.Version = "dev"
@@ -215,7 +215,7 @@ func (s *Server) register() {
 
 func (s *Server) registerInfo() {
 	type empty struct{}
-	addTool(s, toolSpec[empty]{name: "remoteops_info", description: "Report RemoteOps version, capabilities and configured resource names.", permission: permissions.DockerRead, class: permissions.ReadOnly,
+	addTool(s, toolSpec[empty]{name: "remoteops_info", description: "Report Agent Smith version, capabilities and configured resource names.", permission: permissions.DockerRead, class: permissions.ReadOnly,
 		run: func(ctx context.Context, _ auth.Identity, _ empty) (any, error) {
 			dockerConnected := false
 			if s.opts.Docker != nil {

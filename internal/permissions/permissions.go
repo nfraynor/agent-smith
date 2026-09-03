@@ -1,4 +1,4 @@
-// Package permissions defines RemoteOps' server-side authorization policy.
+// Package permissions defines Agent Smith's server-side authorization policy.
 package permissions
 
 import (

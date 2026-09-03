@@ -165,7 +165,7 @@ func consentPermissions(scopes []string) []consentPermission {
 	for _, scope := range scopes {
 		switch scope {
 		case "mcp":
-			permissions = append(permissions, consentPermission{Title: "Use RemoteOps tools", Description: "Perform only the operations allowed by your RemoteOps role."})
+			permissions = append(permissions, consentPermission{Title: "Use Agent Smith tools", Description: "Perform only the operations allowed by your Agent Smith role."})
 		case "offline_access":
 			permissions = append(permissions, consentPermission{Title: "Stay connected", Description: "Refresh access securely without asking you to sign in every time."})
 		}

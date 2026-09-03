@@ -1,5 +1,5 @@
 // Package godmode implements the explicitly enabled, unrestricted host shell.
-// It is deliberately separate from every constrained RemoteOps capability.
+// It is deliberately separate from every constrained Agent Smith capability.
 package godmode
 
 import (

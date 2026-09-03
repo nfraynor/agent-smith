@@ -1,5 +1,5 @@
 // Package oauthui provides the browser-facing login and local account UI for
-// RemoteOps' embedded OAuth authorization server.
+// Agent Smith's embedded OAuth authorization server.
 package oauthui
 
 import (
@@ -40,6 +40,35 @@ type User struct {
 	Role               permissions.Role
 	Enabled            bool
 	MustChangePassword bool
+}
+
+type accountCapability struct {
+	Permission permissions.Permission
+	Summary    string
+}
+
+var accountCapabilityCatalog = []accountCapability{
+	{permissions.DockerRead, "Inspect Docker containers, images, logs, statistics, and service health"},
+	{permissions.ComposeRead, "Inspect and validate configured Compose projects and services"},
+	{permissions.FilesystemRead, "Read managed files and configuration, with secrets redacted"},
+	{permissions.ChangesRead, "Review recorded changes and their diffs"},
+	{permissions.DockerRestart, "Start, stop, and restart Docker containers"},
+	{permissions.DockerDeploy, "Pull images and deploy configured services"},
+	{permissions.ComposeDeploy, "Pull, start, stop, and restart Compose services"},
+	{permissions.FilesystemWrite, "Update managed files safely with backups"},
+	{permissions.ConfigWrite, "Update managed YAML and environment configuration"},
+	{permissions.ChangesRollback, "Roll back recorded changes when no conflict is present"},
+}
+
+func accountCapabilities(role permissions.Role) []string {
+	authorizer := permissions.Authorizer{}
+	result := make([]string, 0, len(accountCapabilityCatalog))
+	for _, capability := range accountCapabilityCatalog {
+		if authorizer.Allowed(role, capability.Permission) {
+			result = append(result, capability.Summary)
+		}
+	}
+	return result
 }
 
 type Session struct {
@@ -277,7 +306,7 @@ func (h *Handler) getAccount(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	h.render(w, r, h.accountTemplate, http.StatusOK, map[string]any{"CSRF": csrf, "User": user})
+	h.render(w, r, h.accountTemplate, http.StatusOK, map[string]any{"CSRF": csrf, "User": user, "Capabilities": accountCapabilities(user.Role)})
 }
 
 func (h *Handler) getPassword(w http.ResponseWriter, r *http.Request) {
@@ -539,7 +568,7 @@ func (h *Handler) render(w http.ResponseWriter, r *http.Request, page *template.
 func (h *Handler) renderMessage(w http.ResponseWriter, status int, message string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
-	_, _ = fmt.Fprintf(w, "<!doctype html><title>RemoteOps</title><p>%s</p>", template.HTMLEscapeString(message))
+	_, _ = fmt.Fprintf(w, "<!doctype html><title>Agent Smith</title><p>%s</p>", template.HTMLEscapeString(message))
 }
 
 func (h *Handler) badRequest(w http.ResponseWriter) {

@@ -1,6 +1,6 @@
 # Self-contained OAuth deployment
 
-RemoteOps contains its own OAuth 2.1 authorization server and local user database.
+Agent Smith contains its own OAuth 2.1 authorization server and local user database.
 No Auth0, Google Workspace, Keycloak, or other identity service is required.
 `oauth-local` is the runtime default when `auth.mode` is omitted, and the normal safe
 and God Mode Compose deployments do not inject a static bearer token.
@@ -45,7 +45,7 @@ revocations. Do not delete that volume during normal upgrades.
 
 ## HAProxy routes
 
-The public origin must forward all of these paths to RemoteOps on port 8080 without
+The public origin must forward all of these paths to Agent Smith on port 8080 without
 rewriting them:
 
 ```text
@@ -57,7 +57,7 @@ rewriting them:
 ```
 
 Both containers must share a Docker network, or HAProxy must be able to reach the
-loopback-published RemoteOps port. A path ACL can look like:
+loopback-published Agent Smith port. A path ACL can look like:
 
 ```haproxy
 acl is_remoteops_path path /mcp /health
@@ -68,7 +68,7 @@ backend remoteops_mcp
     server remoteops agent-smith-remoteops-1:8080 check
 ```
 
-Apply outer source-IP rate limits in HAProxy. RemoteOps deliberately does not trust
+Apply outer source-IP rate limits in HAProxy. Agent Smith deliberately does not trust
 client-supplied forwarding headers.
 
 ## Verify discovery
@@ -92,7 +92,7 @@ https://this.dev.privacyperfect.com/mcp
 ```
 
 The client discovers OAuth, registers its allowlisted callback, and opens the
-RemoteOps login page. Sign in using a local RemoteOps account. No client secret or
+Agent Smith login page. Sign in using a local Agent Smith account. No client secret or
 manually copied bearer token is required.
 
 The default redirect allowlist contains the currently documented ChatGPT application
@@ -102,6 +102,8 @@ upgrade; callbacks are exact-matched and never wildcarded.
 ## User and incident operations
 
 - Manage users at `/oauth/admin/users`.
+- Viewer and Operator users can review a role-based summary of their permitted
+  operation groups at `/oauth/account`.
 - Account changes require the signed-in administrator's own password each time. When
   creating a user, this is separate from the new user's temporary password.
 - Disabling a user, changing a role/password, or revoking sessions invalidates that
@@ -110,7 +112,7 @@ upgrade; callbacks are exact-matched and never wildcarded.
   records, and change history.
 - Retain the bootstrap password file with root-only permissions. It is only used
   while the user database is empty, but Docker Compose still mounts it on restarts.
-- Run one RemoteOps replica per embedded database.
+- Run one Agent Smith replica per embedded database.
 - After suspected compromise, disable the account or reset its password, review
   `/data/audit.jsonl`, and reconnect the affected MCP clients.
 

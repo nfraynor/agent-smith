@@ -86,12 +86,12 @@ func TestConsentPageUsesSharedDesignAndNonce(t *testing.T) {
 	response := httptest.NewRecorder()
 	bridge.ConsentHandler().ServeHTTP(response, request)
 	body, csp := response.Body.String(), response.Header().Get("Content-Security-Policy")
-	for _, want := range []string{"Connection request", "Cool &lt;Client&gt;", "Use RemoteOps tools", "Stay connected", "Authorize connection", "name='transaction' value='" + transaction + "'"} {
+	for _, want := range []string{"Connection request", "Cool &lt;Client&gt;", consentPermissions(input.Scopes)[0].Title, "Stay connected", "Authorize connection", "name='transaction' value='" + transaction + "'"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("consent page missing %q", want)
 		}
 	}
-	if response.Code != http.StatusOK || strings.Contains(body, "Cool <Client>") || !strings.Contains(csp, "style-src 'nonce-") || !strings.Contains(csp, "form-action 'self' https://client.example;") || !strings.Contains(body, "<style nonce=") {
+	if response.Code != http.StatusOK || strings.Contains(body, "Cool <Client>") || !strings.Contains(body, "Agent Smith") || strings.Contains(body, "RemoteOps") || !strings.Contains(csp, "style-src 'nonce-") || !strings.Contains(csp, "form-action 'self' https://client.example;") || !strings.Contains(body, "<style nonce=") {
 		t.Fatalf("status=%d csp=%q body=%s", response.Code, csp, body)
 	}
 
