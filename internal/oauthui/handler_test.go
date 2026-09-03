@@ -282,6 +282,11 @@ func TestAccountPageShowsCapabilitiesForRole(t *testing.T) {
 			if recorder.Code != http.StatusOK || !strings.Contains(body, "You're signed in") || !strings.Contains(body, backend.users[0].Email) || !strings.Contains(body, "Agent Smith") || strings.Contains(body, "RemoteOps") || !strings.Contains(body, "What you can do") || !strings.Contains(body, test.want) || strings.Contains(body, test.doNotWant) {
 				t.Fatalf("status=%d body=%s", recorder.Code, body)
 			}
+			for _, want := range []string{"Connect an MCP client", "https://this.dev.privacyperfect.com/mcp", "Streamable HTTP", "OAuth 2.1 with automatic discovery", "offline_access"} {
+				if !strings.Contains(body, want) {
+					t.Errorf("account page does not contain connection detail %q", want)
+				}
+			}
 		})
 	}
 }
@@ -347,7 +352,7 @@ func TestAdminPageEscapesAccountData(t *testing.T) {
 	request.AddCookie(&http.Cookie{Name: CSRFCookieName, Value: credentials.CSRFToken})
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, request)
-	if recorder.Code != http.StatusOK || strings.Contains(recorder.Body.String(), "<script>") || !strings.Contains(recorder.Body.String(), "&lt;script&gt;") || !strings.Contains(recorder.Body.String(), "Agent Smith") || strings.Contains(recorder.Body.String(), "RemoteOps") {
+	if recorder.Code != http.StatusOK || strings.Contains(recorder.Body.String(), "<script>") || !strings.Contains(recorder.Body.String(), "&lt;script&gt;") || !strings.Contains(recorder.Body.String(), "Agent Smith") || strings.Contains(recorder.Body.String(), "RemoteOps") || !strings.Contains(recorder.Body.String(), `href='/oauth/account'>Connection details</a>`) {
 		t.Fatalf("unsafe output: %s", recorder.Body.String())
 	}
 }

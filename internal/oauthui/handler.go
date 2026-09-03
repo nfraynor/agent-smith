@@ -306,7 +306,10 @@ func (h *Handler) getAccount(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	h.render(w, r, h.accountTemplate, http.StatusOK, map[string]any{"CSRF": csrf, "User": user, "Capabilities": accountCapabilities(user.Role)})
+	h.render(w, r, h.accountTemplate, http.StatusOK, map[string]any{
+		"CSRF": csrf, "User": user, "Capabilities": accountCapabilities(user.Role),
+		"MCPURL": h.origin + "/mcp",
+	})
 }
 
 func (h *Handler) getPassword(w http.ResponseWriter, r *http.Request) {

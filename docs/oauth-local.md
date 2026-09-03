@@ -102,8 +102,8 @@ upgrade; callbacks are exact-matched and never wildcarded.
 ## User and incident operations
 
 - Manage users at `/oauth/admin/users`.
-- Viewer and Operator users can review a role-based summary of their permitted
-  operation groups at `/oauth/account`.
+- Signed-in users can retrieve the configured MCP URL, transport, OAuth settings,
+  and a role-based summary of their permitted operations at `/oauth/account`.
 - Account changes require the signed-in administrator's own password each time. When
   creating a user, this is separate from the new user's temporary password.
 - Disabling a user, changing a role/password, or revoking sessions invalidates that
