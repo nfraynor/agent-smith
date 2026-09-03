@@ -8,6 +8,17 @@ import (
 	"github.com/nfraynor/agent-smith/internal/limits"
 )
 
+func TestOAuthRouterDoesNotRedirectExactAccountPath(t *testing.T) {
+	protocol := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
+	ui := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusTeapot) })
+	mux := routeOAuthHandlers(protocol, protocol, ui)
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/oauth/account", nil))
+	if response.Code != http.StatusTeapot || response.Header().Get("Location") != "" {
+		t.Fatalf("status=%d location=%q", response.Code, response.Header().Get("Location"))
+	}
+}
+
 func TestHTTPRateLimitUsesSourceAddressBeforeAuthentication(t *testing.T) {
 	called := 0
 	handler := httpRateLimit(limits.NewLimiter(1, 1), http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {

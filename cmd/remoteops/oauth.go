@@ -83,14 +83,7 @@ func newOAuthRuntime(cfg config.Config, auditService *audit.Service, logger *slo
 		return fail(fmt.Errorf("initialize OAuth protocol server: %w", err))
 	}
 	protocolHandler := bridge.ResumeAuthorization(protocol.Handler())
-	mux := http.NewServeMux()
-	mux.Handle("/.well-known/", protocolHandler)
-	mux.Handle("/oauth/consent", bridge.ConsentHandler())
-	mux.Handle("/oauth/", protocolHandler)
-	mux.Handle("/oauth/login", ui)
-	mux.Handle("/oauth/logout", ui)
-	mux.Handle("/oauth/account/", ui)
-	mux.Handle("/oauth/admin/", ui)
+	mux := routeOAuthHandlers(protocolHandler, bridge.ConsentHandler(), ui)
 
 	runtime := &oauthRuntime{
 		authenticator: oauthbridge.AccessAuthenticator{Bridge: bridge}, handler: auditOAuthProtocol(mux, auditService),
@@ -99,6 +92,19 @@ func newOAuthRuntime(cfg config.Config, auditService *audit.Service, logger *slo
 	}
 	go runtime.cleanupLoop(logger)
 	return runtime, nil
+}
+
+func routeOAuthHandlers(protocolHandler, consentHandler, ui http.Handler) *http.ServeMux {
+	mux := http.NewServeMux()
+	mux.Handle("/.well-known/", protocolHandler)
+	mux.Handle("/oauth/consent", consentHandler)
+	mux.Handle("/oauth/", protocolHandler)
+	mux.Handle("/oauth/login", ui)
+	mux.Handle("/oauth/logout", ui)
+	mux.Handle("/oauth/account", ui)
+	mux.Handle("/oauth/account/", ui)
+	mux.Handle("/oauth/admin/", ui)
+	return mux
 }
 
 type oauthStatusRecorder struct {
