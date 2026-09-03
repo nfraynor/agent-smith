@@ -56,6 +56,7 @@ type storedCode struct {
 }
 type storedAccess struct {
 	TokenGrant
+	FamilyID        string     `json:"family_id,omitempty"`
 	ExpiresAt       time.Time  `json:"expires_at"`
 	RevokedAt       *time.Time `json:"revoked_at,omitempty"`
 	SecurityVersion uint64     `json:"security_version"`

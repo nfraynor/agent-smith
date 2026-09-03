@@ -254,7 +254,7 @@ func (s *Store) RotateRefresh(raw string, binding RefreshBinding, accessTTL, ref
 func (s *Store) persistTokenPair(tx *bolt.Tx, grant TokenGrant, family, access, refresh string, securityVersion uint64, accessTTL, refreshTTL time.Duration) (TokenPair, error) {
 	now := s.now().UTC()
 	grant.Scopes = append([]string(nil), grant.Scopes...)
-	accessRecord := storedAccess{TokenGrant: grant, ExpiresAt: now.Add(accessTTL), SecurityVersion: securityVersion}
+	accessRecord := storedAccess{TokenGrant: grant, FamilyID: family, ExpiresAt: now.Add(accessTTL), SecurityVersion: securityVersion}
 	refreshRecord := storedRefresh{TokenGrant: grant, FamilyID: family, ExpiresAt: now.Add(refreshTTL), SecurityVersion: securityVersion}
 	if err := putJSON(tx.Bucket(bucketAccess), credentialKey(access), accessRecord); err != nil {
 		return TokenPair{}, err
@@ -335,8 +335,22 @@ func (s *Store) RevokeToken(raw, clientID string) error {
 }
 
 func revokeFamily(tx *bolt.Tx, family string, now time.Time) error {
-	bucket := tx.Bucket(bucketRefresh)
-	return bucket.ForEach(func(key, value []byte) error {
+	accessBucket := tx.Bucket(bucketAccess)
+	if err := accessBucket.ForEach(func(key, value []byte) error {
+		var record storedAccess
+		if err := jsonUnmarshal(value, &record); err != nil {
+			return err
+		}
+		if record.FamilyID != family {
+			return nil
+		}
+		record.RevokedAt = &now
+		return putJSON(accessBucket, string(key), record)
+	}); err != nil {
+		return err
+	}
+	refreshBucket := tx.Bucket(bucketRefresh)
+	return refreshBucket.ForEach(func(key, value []byte) error {
 		var record storedRefresh
 		if err := jsonUnmarshal(value, &record); err != nil {
 			return err
@@ -345,7 +359,7 @@ func revokeFamily(tx *bolt.Tx, family string, now time.Time) error {
 			return nil
 		}
 		record.RevokedAt = &now
-		return putJSON(bucket, string(key), record)
+		return putJSON(refreshBucket, string(key), record)
 	})
 }
 

@@ -130,6 +130,36 @@ func TestSecurityVersionImmediatelyInvalidatesCredentials(t *testing.T) {
 	}
 }
 
+func TestRevokingRefreshTokenRevokesAccessTokenFamily(t *testing.T) {
+	now := time.Now().UTC()
+	store := openTestStore(t, &now)
+	user := bootstrapTestUser(t, store)
+	client, err := store.RegisterClient(ClientRegistration{Name: "test", RedirectURIs: []string{"https://client.example/callback"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	binding := RefreshBinding{ClientID: client.ID, Resource: "https://server.example/mcp"}
+	first, err := store.IssueTokenPair(TokenGrant{UserID: user.ID, ClientID: client.ID, Resource: binding.Resource, Scopes: []string{"mcp", "offline_access"}}, time.Minute, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := store.RotateRefresh(first.RefreshToken, binding, time.Minute, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = store.RevokeToken(second.RefreshToken, client.ID); err != nil {
+		t.Fatal(err)
+	}
+	for _, access := range []string{first.AccessToken, second.AccessToken} {
+		if _, authErr := store.AuthenticateAccess(access, binding.Resource); !errors.Is(authErr, ErrRevoked) {
+			t.Fatalf("family access token survived refresh revocation: %v", authErr)
+		}
+	}
+	if _, err = store.RotateRefresh(second.RefreshToken, binding, time.Minute, time.Hour); !errors.Is(err, ErrRevoked) {
+		t.Fatalf("refresh token survived family revocation: %v", err)
+	}
+}
+
 func TestAuthorizationCodeIsBoundAndConsumedOnce(t *testing.T) {
 	now := time.Now().UTC()
 	store := openTestStore(t, &now)
